@@ -21,7 +21,6 @@
       <div class="logo" id="logo1">-</div>
       <h2 id="teamA" style="margin:4px 0;font-size:16px;">-</h2>
       <div class="score" id="mainScore">--/--<br><small>(--)</small></div>
-      <div class="role" id="battingInfo"><span class="strike-mark">*</span> -<br>-</div>
     </div>
 
     <div class="center" id="tossText">-</div>
@@ -30,12 +29,16 @@
       <div class="logo" id="logo2">-</div>
       <h2 id="teamB" style="margin:4px 0;font-size:16px;">-</h2>
       <div class="score" style="color:#999" id="teamBScore">Yet to bat</div>
-      <div class="role" id="bowlingInfo">-<br>Last: -<br>This Over: <span class="mini-over"><span class="ball-dot">-</span></span></div>
     </div>
   </div>
 
   <div class="sub"><span class="status-pill" id="statusPill"><span class="pulse"></span><span id="liveBadgeText">Live Match</span></span></div>
   <div class="info" id="liveInfo">Waiting for admin data</div>
+  <div class="header-divider"></div>
+  <div class="header-details">
+    <div class="role" id="battingInfo"><span class="batter-line striker-line">- <span class="strike-mark">🏏</span></span><span class="batter-line">-</span></div>
+    <div class="role" id="bowlingInfo">-<br>Last: -<br>This Over: <span class="mini-over"><span class="ball-dot">-</span></span></div>
+  </div>
 </div>
 
 <div class="over-strip">
@@ -154,8 +157,12 @@
 
 <div id="matches" class="content">
   <div class="card">
-    <h3>Matches</h3>
-    <div class="p-stat"><span>Total Matches:</span><b id="totalMatchesCount">0</b></div>
+    <div class="matches-tabs">
+      <button class="matches-tab active" id="matchesFilterAll" onclick="app.switchMatchesFilter('all')">All</button>
+      <button class="matches-tab" id="matchesFilterLive" onclick="app.switchMatchesFilter('live')">Live</button>
+      <button class="matches-tab" id="matchesFilterComplete" onclick="app.switchMatchesFilter('complete')">Complete</button>
+      <button class="matches-tab" id="matchesFilterPending" onclick="app.switchMatchesFilter('pending')">Pending</button>
+    </div>
     <div id="matchesList" style="margin-top:8px;"></div>
   </div>
 </div>
@@ -187,4 +194,3 @@
 
 </body>
 </html>
-

@@ -8,6 +8,7 @@ const MATCH_ID = (params.get("match") || "liveMatch1").trim();
 const TEAM_CATALOG_ID = "teamCatalog";
 const TEAM_BACKUP_KEY = "cricket_team_catalog_backup";
 const SAVED_LINKS_KEY = "cricket_saved_links";
+const UNDO_BACKUP_KEY = `cricket_undo_backup_${MATCH_ID}`;
 const ADMIN_PASSWORD = "admin123";
 const CLOUD_NAME = "dsnuatuc8";
 const UPLOAD_PRESET = "ml_default";
@@ -47,7 +48,9 @@ window.app = {
   },
   bindAuthEvents(){
     const input=document.getElementById("adminPasswordInput");
+    const btn=document.getElementById("adminLoginBtn");
     if(input) input.addEventListener("keydown",(e)=>{ if(e.key==="Enter") this.unlockAdmin(); });
+    if(btn) btn.addEventListener("click",()=>this.unlockAdmin());
   },
   unlockAdmin(){
     const input=document.getElementById("adminPasswordInput");
@@ -715,6 +718,7 @@ window.app = {
       const teams=this.hasTeamCatalog ? this.state.teams : (remoteTeams || this.state.teams);
       const teamInfo=this.hasTeamCatalog ? this.state.teamInfo : (remoteTeamInfo || this.state.teamInfo);
       this.state={...this.state,...remote,teams,teamInfo};
+      this.restoreUndoBackup();
       this.ensureTeamData();
       this.refreshTeamSelectors();
       document.getElementById("matchTitle").value=this.state.matchTitle||"";
@@ -893,17 +897,18 @@ window.app = {
     const mode=this.state.liveControl?.mode || "live";
     const locked=!!this.state.scoringLocked;
     const complete=!!this.state.matchFinished;
-    const label=complete ? "Complete" : (mode==="paused" ? "Break" : (mode==="delay" ? "Delay" : "Live"));
-    const note=complete ? "Match Complete" : (locked ? "Scoring locked" : "Scoring open");
+    const noLive=!this.state.liveStarted && !this.state.battingTeam && !this.state.bowlingTeam;
+    const label=noLive ? "No Live" : (complete ? "Complete" : (mode==="paused" ? "Break" : (mode==="delay" ? "Delay" : "Live")));
+    const note=noLive ? "Start a match from setup" : (complete ? "Match Complete" : (locked ? "Scoring locked" : "Scoring open"));
     const pill=document.getElementById("liveStatusPill");
-    if(pill){ pill.innerText=label.toUpperCase(); pill.className=`pill ${complete?"paused":mode}`; }
+    if(pill){ pill.innerText=label.toUpperCase(); pill.className=`pill ${noLive?"paused":(complete?"paused":mode)}`; }
     const text=document.getElementById("liveModeText");
     if(text) text.innerText=label;
     const noteEl=document.getElementById("liveModeNote");
     if(noteEl) noteEl.innerText=note;
     ["live","paused","delay"].forEach(x=>{
       const btn=document.getElementById(`${x}Btn`);
-      if(btn) btn.classList.toggle("active", complete ? x==="paused" : x===mode);
+      if(btn) btn.classList.toggle("active", noLive ? false : (complete ? x==="paused" : x===mode));
     });
     const lockBtn=document.getElementById("lockBtn");
     const unlockBtn=document.getElementById("unlockBtn");
@@ -986,6 +991,7 @@ window.app = {
     }
     const followLink=(document.getElementById("followLinkInput")?.value||"").trim();
     this.state={...this.state,...this.scoreDefaults(),...keep,liveStarted:true,battingTeam,bowlingTeam,matchTitle:`${setup.teamA} vs ${setup.teamB}`,tossWinner,tossDecision,tossText:`${winnerTeam} chose ${action}`,totalOvers,followLink,benchPlayers:[...(keep.teams[battingTeam]||[])]};
+    this.clearUndoBackup();
     this.state.activeLeagueMatch=activeLeagueMatch;
     this.state.bat1={name:openingStriker,r:0,b:0,f:0,s:0};
     this.state.bat2={name:openingNonStriker,r:0,b:0,f:0,s:0};
@@ -1161,6 +1167,34 @@ window.app = {
     this.resultOverlayClosed=false;
     this.hasLocalChanges=true;
   },
+  clearCurrentLiveAfterComplete(){
+    const keep={
+      teams:this.state.teams||{},
+      teamInfo:this.state.teamInfo||{},
+      completedMatches:this.state.completedMatches||[],
+      tournamentStats:this.state.tournamentStats||{players:{}},
+      pointsTable:this.state.pointsTable||{},
+      mvpLog:this.state.mvpLog||[],
+      league:this.state.league||{name:"",teams:[],overs:20,format:"single",playoffs:true,schedule:[]},
+      offlineQueue:this.state.offlineQueue||[],
+      followLink:this.state.followLink||""
+    };
+    this.state={
+      ...this.state,
+      ...this.scoreDefaults(),
+      ...keep,
+      matchTitle:"Select Teams",
+      battingTeam:"",
+      bowlingTeam:"",
+      tossText:"Toss pending",
+      liveStarted:false,
+      matchFinished:false,
+      winnerText:"",
+      scoringLocked:false,
+      liveControl:{mode:"live",note:"Live"},
+      activeLeagueMatch:null
+    };
+  },
   async startSuperOver(){
     if(!/tied/i.test(this.state.winnerText||"")) return this.showPopup("Super Over is available only after tie.","warn");
     if(!confirm("Start Super Over? Current tied result will stay in history and scoring will reset to 1 over.")) return;
@@ -1179,6 +1213,7 @@ window.app = {
     }
     const battingTeam=this.state.battingTeam, bowlingTeam=this.state.bowlingTeam;
     this.state={...this.state,...this.scoreDefaults(),...keep,liveStarted:true,battingTeam,bowlingTeam,matchTitle:`${battingTeam} vs ${bowlingTeam} - Super Over`,tossText:"Super Over",totalOvers:1,benchPlayers:[...(keep.teams[battingTeam]||[])]};
+    this.clearUndoBackup();
     this.state.superOverFor=parentMatch?{id:parentMatch.id,title:parentMatch.title}:null;
     this.hasLocalChanges=true;
     this.resultOverlayClosed=true;
@@ -1198,6 +1233,8 @@ window.app = {
     this.state.scoringLocked=true;
     this.state.liveControl={mode:"paused",note:"Match Complete"};
     if(!this.state.resultRecorded) this.finalizeMatchRecord();
+    this.clearCurrentLiveAfterComplete();
+    this.clearUndoBackup();
     this.hasLocalChanges=true;
     this.render(false);
     await this.saveToFirebase(true);
@@ -1256,6 +1293,7 @@ window.app = {
     if(!Array.isArray(this.state.ballEvents)) this.state.ballEvents=[];
     this.state.ballEvents.push({id:ballBackup.id,ball:ballNo,label,text:commentaryText,before:ballBackup.before,score:`${this.state.runs}/${this.state.wkts} (${this.overText(this.state.balls)})`});
     if(this.state.ballEvents.length>120) this.state.ballEvents.shift();
+    this.persistUndoBackup();
     if(run===4) this.pushHighlight(`FOUR by ${this.state.striker===1?this.state.bat1.name:this.state.bat2.name}`,"boundary");
     if(run===6) this.pushHighlight(`SIX by ${this.state.striker===1?this.state.bat1.name:this.state.bat2.name}`,"boundary");
     if(wicket) await this.promptNextBatsman();
@@ -1319,6 +1357,7 @@ window.app = {
       return;
     }
     const prev = this.state.ballHistory.pop();
+    const currentEvents=Array.isArray(this.state.ballEvents)?this.state.ballEvents:[];
     const keep={
       teams:this.state.teams||{},
       teamInfo:this.state.teamInfo||{},
@@ -1328,22 +1367,60 @@ window.app = {
       mvpLog:this.state.mvpLog||[],
       league:this.state.league||{name:"",teams:[],overs:20,format:"single",playoffs:true,schedule:[]},
       offlineQueue:this.state.offlineQueue||[],
-      ballEvents:this.state.ballEvents||[]
+      ballEvents:currentEvents.slice(0,-1)
     };
     this.state = { ...prev, ...keep, ballHistory:this.state.ballHistory };
     this.hasLocalChanges=true;
     this.ensureTeamData();
     this.refreshTeamSelectors();
     this.renderBench();
+    this.persistUndoBackup();
     this.render();
+  },
+  undoSnapshot(){
+    const copy=JSON.parse(JSON.stringify(this.state));
+    delete copy.history;
+    delete copy.ballHistory;
+    copy.ballEvents=(copy.ballEvents||[]).map(ev=>({id:ev.id,ball:ev.ball,label:ev.label,text:ev.text,score:ev.score}));
+    return copy;
+  },
+  persistUndoBackup(){
+    try{
+      const payload={
+        matchTitle:this.state.matchTitle||"",
+        battingTeam:this.state.battingTeam||"",
+        bowlingTeam:this.state.bowlingTeam||"",
+        liveStarted:!!this.state.liveStarted,
+        ballHistory:(this.state.ballHistory||[]).slice(-40),
+        ballEvents:(this.state.ballEvents||[]).slice(-40)
+      };
+      localStorage.setItem(UNDO_BACKUP_KEY,JSON.stringify(payload));
+    }catch(e){ console.warn("Undo backup failed",e); }
+  },
+  restoreUndoBackup(){
+    try{
+      const raw=localStorage.getItem(UNDO_BACKUP_KEY);
+      if(!raw) return;
+      const saved=JSON.parse(raw);
+      const sameMatch=(saved.matchTitle||"")===(this.state.matchTitle||"") && (saved.battingTeam||"")===(this.state.battingTeam||"") && (saved.bowlingTeam||"")===(this.state.bowlingTeam||"");
+      if(!sameMatch || !this.state.liveStarted) return;
+      if(Array.isArray(saved.ballHistory)) this.state.ballHistory=saved.ballHistory;
+      if(Array.isArray(saved.ballEvents)) this.state.ballEvents=saved.ballEvents;
+    }catch(e){ console.warn("Undo restore failed",e); }
+  },
+  clearUndoBackup(){
+    this.state.ballHistory=[];
+    this.state.ballEvents=[];
+    try{ localStorage.removeItem(UNDO_BACKUP_KEY); }catch(e){}
   },
   saveBallHistory(){
     this.hasLocalChanges=true;
     if(!this.state.ballHistory) this.state.ballHistory = [];
-    const before=JSON.parse(JSON.stringify(this.state));
+    const before=this.undoSnapshot();
     const id=Date.now()+"-"+Math.random().toString(16).slice(2);
     this.state.ballHistory.push(before);
     if(this.state.ballHistory.length > 120) this.state.ballHistory.shift();
+    this.persistUndoBackup();
     return {id,before};
   },
   renderRecentBalls(){
@@ -1377,6 +1454,7 @@ window.app = {
     this.ensureTeamData();
     this.refreshTeamSelectors();
     this.renderBench();
+    this.persistUndoBackup();
     this.render();
   },
   saveHistory(){ this.hasLocalChanges=true; this.state.history.push(JSON.parse(JSON.stringify(this.state))); if(this.state.history.length>60) this.state.history.shift(); },

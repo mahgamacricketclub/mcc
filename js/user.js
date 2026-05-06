@@ -10,8 +10,10 @@ const MATCH_ID = (params.get("match") || "liveMatch1").trim();
 window.app = {
   state: {},
   scorecardView: "teamA",
+  matchesFilter: "all",
   selectedMatchIndex: undefined,
   selectedPlayer: null,
+  renderQueued: false,
 
   init() {
     this.showNoLive("Connecting to live match...");
@@ -29,9 +31,37 @@ window.app = {
     setText("logo2", "-");
     setText("tossText", "-");
     setText("liveInfo", message);
-    setHtml("battingInfo", '<span class="strike-mark">*</span> -<br>-');
+    setHtml("battingInfo", '<span class="batter-line striker-line">- <span class="strike-mark">🏏</span></span><span class="batter-line">-</span>');
     setHtml("bowlingInfo", '-<br>Last: -<br>This Over: <span class="mini-over"><span class="ball-dot">-</span></span>');
     setHtml("allOverStrip", '<div class="over-row"><div class="bowler-line">Over: -</div><div class="mini-over"><span class="ball-dot">-</span></div></div>');
+    this.renderMatchesList();
+    this.renderLeaguePanel();
+  },
+  showLatestCompletedNoLive(matchData) {
+    const teamA = matchData.battingTeam || matchData.teamA || "-";
+    const teamB = matchData.bowlingTeam || matchData.teamB || "-";
+    const leftShort = this.teamShort(matchData, teamA);
+    const rightShort = this.teamShort(matchData, teamB);
+    const setText = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
+    const setHtml = (id, value) => { const el = document.getElementById(id); if (el) el.innerHTML = value; };
+    setText("matchTitle", "No Live Match");
+    setText("teamA", leftShort);
+    setText("teamB", rightShort);
+    setHtml("logo1", this.logoHtml(matchData, teamA));
+    setHtml("logo2", this.logoHtml(matchData, teamB));
+    setHtml("mainScore", `${this.safe(matchData.firstInnings || this.inningsScoreText(matchData, teamA, "-"))}<br><small>1st innings</small>`);
+    setHtml("teamBScore", `${this.safe(matchData.secondInnings || this.inningsScoreText(matchData, teamB, "-"))}<br><small>2nd innings</small>`);
+    const tossEl = document.getElementById("tossText");
+    if(tossEl){
+      tossEl.innerText = "Complete";
+      tossEl.classList.remove("live", "delay", "break", "locked", "result", "pending", "ready");
+      tossEl.classList.add("result");
+    }
+    setText("liveInfo", matchData.winnerText || "Latest match completed");
+    setHtml("battingInfo", '<span class="batter-line">No live match</span><span class="batter-line">Start next match from admin</span>');
+    setHtml("bowlingInfo", `${this.safe(matchData.title || `${teamA} vs ${teamB}`)}<br>Completed`);
+    setHtml("allOverStrip", '<div class="over-row"><div class="bowler-line">Latest result</div><div class="mini-over"><span class="ball-dot">OK</span></div></div>');
+    document.querySelector(".header")?.classList.add("compact-complete");
     this.renderMatchesList();
     this.renderLeaguePanel();
   },
@@ -40,13 +70,21 @@ window.app = {
     onSnapshot(doc(db, "matches", MATCH_ID), (snap) => {
       if (snap.exists()) {
         this.state = snap.data() || {};
-        this.render();
+        this.scheduleRender();
       } else {
         this.showNoLive("No live match created yet");
       }
     }, (error) => {
       console.error("Firebase Error:", error);
       this.showNoLive("Unable to connect to live match");
+    });
+  },
+  scheduleRender() {
+    if(this.renderQueued) return;
+    this.renderQueued = true;
+    requestAnimationFrame(() => {
+      this.renderQueued = false;
+      this.render();
     });
   },
 
@@ -121,6 +159,7 @@ window.app = {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById(id).classList.add('active');
     btn.classList.add('active');
+    this.render();
   },
 
   switchScorecard(team, btn) {
@@ -128,6 +167,10 @@ window.app = {
     btn.classList.add('active');
     this.scorecardView = team;
     this.render();
+  },
+  switchMatchesFilter(filter) {
+    this.matchesFilter = filter;
+    this.renderMatchesList();
   },
   showMatchResult(index) {
     this.selectedMatchIndex = index;
@@ -143,14 +186,23 @@ window.app = {
   renderMatchesList() {
     const history = Array.isArray(this.state.completedMatches) ? this.state.completedMatches : [];
     const schedule = Array.isArray(this.state.league?.schedule) ? this.state.league.schedule : [];
-    const countEl = document.getElementById("totalMatchesCount");
+    const pendingMatches = schedule.filter(m => m.status !== "done");
     const listEl = document.getElementById("matchesList");
-    if(countEl) countEl.innerText = history.length;
     if(!listEl) return;
+    document.querySelectorAll(".matches-tab").forEach(tile => tile.classList.remove("active"));
+    const filterId = `matchesFilter${this.matchesFilter.charAt(0).toUpperCase()}${this.matchesFilter.slice(1)}`;
+    document.getElementById(filterId)?.classList.add("active");
     const liveMatch = (this.state.liveStarted && !this.state.matchFinished) ? `<div class="match-group-title">Live</div><div class="match-result-card"><div class="match-result-title">${this.safe(this.state.matchTitle || "Live Match")}</div><div class="match-result-meta">${this.safe(this.state.battingTeam || "-")} batting · ${Number(this.state.runs||0)}/${Number(this.state.wkts||0)} (${this.overText(this.state.balls||0)})</div></div>` : "";
-    const upcoming = schedule.filter(m => m.status !== "done").slice(0, 10).map(m => `<div class="match-result-card"><div class="match-result-title">${this.safe(m.teamA)} vs ${this.safe(m.teamB)}</div><div class="match-result-meta">${this.safe(m.stage || "League")} · ${this.safe(m.round || "")}${m.date?`<br>${this.safe(m.date)} ${this.safe(m.time||"")}`:""}${m.venue?` · ${this.safe(m.venue)}`:""}</div></div>`).join("");
+    const upcoming = pendingMatches.slice(0, 10).map(m => `<div class="match-result-card"><div class="match-result-title">${this.safe(m.teamA)} vs ${this.safe(m.teamB)}</div><div class="match-result-meta">${this.safe(m.stage || "League")} · ${this.safe(m.round || "")}${m.date?`<br>${this.safe(m.date)} ${this.safe(m.time||"")}`:""}${m.venue?` · ${this.safe(m.venue)}`:""}</div></div>`).join("");
     const completed = history.map((x, i) => `<div class="match-result-card ${i===this.selectedMatchIndex?'active':''}" onclick="app.showMatchResult(${i})"><div class="match-result-title">${this.safe(x.title || "Match")}</div><div class="match-result-meta">${this.safe(x.leagueStage || ("Match " + (history.length - i)))} · ${this.safe(x.winnerText || "-")}<br>${this.safe(x.firstInnings || "-")} ${x.secondInnings ? " / " + this.safe(x.secondInnings) : ""}</div></div>`).join("");
-    listEl.innerHTML = `${liveMatch}${upcoming?`<div class="match-group-title">Upcoming</div>${upcoming}`:""}${completed?`<div class="match-group-title">Completed</div>${completed}`:""}${(!liveMatch&&!upcoming&&!completed)?'<span style="color:#999;font-size:13px;">No matches yet</span>':""}`;
+    const blocks = {
+      all: `${liveMatch}${upcoming?`<div class="match-group-title">Pending</div>${upcoming}`:""}${completed?`<div class="match-group-title">Completed</div>${completed}`:""}`,
+      live: liveMatch,
+      complete: completed ? `<div class="match-group-title">Completed</div>${completed}` : "",
+      pending: upcoming ? `<div class="match-group-title">Pending</div>${upcoming}` : ""
+    };
+    const html = blocks[this.matchesFilter] || blocks.all;
+    listEl.innerHTML = html || '<span style="color:#999;font-size:13px;">No matches yet</span>';
   },
   nrr(points){
     const forRate=points?.BF?((Number(points.RF||0))/(Number(points.BF||0)/6)):0;
@@ -232,6 +284,8 @@ window.app = {
     const matchData = isViewingCompleted ? m.completedMatches[this.selectedMatchIndex] : m;
     if (!matchData) return this.showNoLive("Invalid match data");
     if (!isViewingCompleted && !matchData.liveStarted && (!matchData.matchTitle || !matchData.battingTeam || !matchData.bowlingTeam)){
+      const latest = Array.isArray(m.completedMatches) ? m.completedMatches[0] : null;
+      if(latest) return this.showLatestCompletedNoLive(latest);
       return this.showNoLive("Admin has not started a match yet");
     }
 
@@ -283,7 +337,6 @@ window.app = {
     document.getElementById("teamBScore").innerHTML = isViewingCompleted && matchData.secondInnings
       ? `${this.safe(secondHeaderScore)}<br><small>2nd innings</small>`
       : (firstInningsScore || "Yet to bat");
-    document.getElementById("tossText").innerText = (matchData.matchFinished && matchData.winnerText) ? matchData.winnerText : (matchData.tossText || "-");
     const strikerObj = (matchData.striker === 1 ? (matchData.bat1 || {}) : (matchData.bat2 || {}));
     const nonStrikerObj = (matchData.striker === 1 ? (matchData.bat2 || {}) : (matchData.bat1 || {}));
     const strikerName = strikerObj.name || "-";
@@ -304,7 +357,7 @@ window.app = {
       const display = isWicket ? "W" : (txt.length > 2 ? txt.slice(0,2) : txt);
       return `<span class="ball-dot ${cls}">${display}</span>`;
     }).join("") : `<span class="ball-dot">-</span>`;
-    document.getElementById("battingInfo").innerHTML = `<span class="strike-mark">*</span> ${this.safe(strikerName)} (${strikerRuns}/${strikerBalls})<br>${this.safe(nonStrikerName)} (${nonStrikerRuns}/${nonStrikerBalls})`;
+    document.getElementById("battingInfo").innerHTML = `<span class="batter-line striker-line">${this.safe(strikerName)} (${strikerRuns}/${strikerBalls}) <span class="strike-mark">🏏</span></span><span class="batter-line">${this.safe(nonStrikerName)} (${nonStrikerRuns}/${nonStrikerBalls})</span>`;
     document.getElementById("bowlingInfo").innerHTML = `${this.safe(bowlerObj.name || "-")} (${bowlerOvers})<br>Last: ${this.safe(matchData.lastOverBowler || "-")}<br>This Over:<div class="mini-over">${thisOverLine}</div>`;
     const overRows = [];
     if(thisOverBalls.length){
@@ -325,6 +378,15 @@ window.app = {
     });
     document.getElementById("allOverStrip").innerHTML = overRows.length ? overRows.join("") : '<div class="over-row"><div class="bowler-line">Over: -</div><div class="mini-over"><span class="ball-dot">-</span></div></div>';
     const liveState = (matchData.liveControl && matchData.liveControl.mode) || "live";
+    const tossEl = document.getElementById("tossText");
+    const centerState = isViewingCompleted || matchData.matchFinished
+      ? "result"
+      : (m.scoringLocked ? "locked" : (liveState === "paused" ? "break" : (liveState === "delay" ? "delay" : "live")));
+    tossEl.innerText = isViewingCompleted || matchData.matchFinished
+      ? "Result"
+      : (m.scoringLocked ? "Locked" : (liveState === "paused" ? "Break" : (liveState === "delay" ? "Delayed" : "Live")));
+    tossEl.classList.remove("live", "delay", "break", "locked", "result", "pending", "ready");
+    tossEl.classList.add(centerState);
     document.querySelector(".header")?.classList.toggle("compact-complete", !!(isViewingCompleted || matchData.matchFinished));
     const liveBadge = document.getElementById("liveBadgeText");
     const liveSub = liveBadge.closest(".sub");
@@ -332,18 +394,15 @@ window.app = {
     const isCompleteState = !!(isViewingCompleted || matchData.matchFinished);
     liveBadge.innerText = isCompleteState
       ? "Match Complete"
-      : (m.scoringLocked ? "Scoring Locked" : (liveState === "paused" ? "Match Break" : (liveState === "delay" ? "Match Delayed" : "Live Match")));
+      : (m.scoringLocked ? "Scoring Locked" : (liveState === "paused" ? "Break" : (liveState === "delay" ? "Delayed" : "Live")));
     liveSub.classList.remove("live", "delay", "break");
     liveSub.classList.add(isCompleteState ? "break" : (liveState === "paused" ? "break" : (liveState === "delay" ? "delay" : "live")));
     statusPill.classList.toggle("locked", !!matchData.scoringLocked);
 
-    const tossEl = document.getElementById("tossText");
     const tossPending = !(matchData.tossText && matchData.tossText.trim() && matchData.tossText.toLowerCase() !== "toss pending");
-    tossEl.classList.remove("pending", "ready");
-    tossEl.classList.add(tossPending ? "pending" : "ready");
     document.getElementById("liveInfo").innerText = matchData.matchFinished && matchData.winnerText
       ? matchData.winnerText
-      : `${batTeamShort} batting · CRR: ${crr}${target ? ` · Need ${need} from ${remBalls}` : ""}`;
+      : `${tossPending ? `${batTeamShort} batting` : matchData.tossText} · CRR: ${crr}${target ? ` · Need ${need} from ${remBalls}` : ""}`;
 
     document.getElementById("overviewScore").innerText = `${runs}/${wickets} (${overs})`;
     document.getElementById("overviewToss").innerText = matchData.tossText || "-";
@@ -358,6 +417,11 @@ window.app = {
     document.getElementById("highlightsList").innerHTML = (matchData.highlights || []).length > 0
       ? matchData.highlights.slice(0, 8).map(h => `<div class="comment"><span class="ball">${this.safe(h.time || "")}</span> - ${this.safe(h.text || "")}</div>`).join("")
       : '<span style="color:#999;font-size:13px;">No highlights yet</span>';
+    const activeTab = document.querySelector(".content.active")?.id || "overview";
+    if(activeTab === "overview"){
+      this.renderMatchesList();
+      return;
+    }
 
     const bat1 = matchData.bat1 || { name: "-", r: 0, b: 0, f: 0, s: 0 };
     const bat2 = matchData.bat2 || { name: "-", r: 0, b: 0, f: 0, s: 0 };
