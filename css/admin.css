@@ -1,4 +1,4 @@
-﻿*{box-sizing:border-box} body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:#eef3f8;color:#13233a}
+*{box-sizing:border-box} body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:#eef3f8;color:#13233a}
     .top{position:sticky;top:0;z-index:10;background:#10243d;color:#fff;padding:12px 14px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;box-shadow:0 10px 30px rgba(15,23,42,.18)}
     .pill{border:1px solid rgba(255,255,255,.2);padding:7px 11px;border-radius:999px;font-size:12px;font-weight:800;background:rgba(255,255,255,.08);white-space:nowrap}
     .pill.live{background:#0f766e;border-color:#2dd4bf}.pill.paused{background:#b45309;border-color:#fbbf24}.pill.delay{background:#475569;border-color:#94a3b8}
