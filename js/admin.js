@@ -1,4 +1,4 @@
-﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { firebaseConfig } from "../firebase/firebase-config.js";
 
@@ -9,7 +9,7 @@ const TEAM_CATALOG_ID = "teamCatalog";
 const TEAM_BACKUP_KEY = "cricket_team_catalog_backup";
 const SAVED_LINKS_KEY = "cricket_saved_links";
 const UNDO_BACKUP_KEY = `cricket_undo_backup_${MATCH_ID}`;
-const ADMIN_PASSWORD = "admin123";
+const ADMIN_PASSWORD = "Sahib12@";
 const CLOUD_NAME = "dsnuatuc8";
 const UPLOAD_PRESET = "ml_default";
 
