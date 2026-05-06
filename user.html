@@ -1,0 +1,190 @@
+﻿﻿<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Cricket - User Panel</title>
+
+<link rel="stylesheet" href="./css/user.css">
+</head>
+
+<body>
+
+<div class="header">
+  <div class="series">
+    <span id="matchTitle">Live Match ></span>
+    <button class="follow" onclick="app.followToggle(this)">Follow</button>
+  </div>
+
+  <div class="match-box">
+    <div class="team">
+      <div class="logo" id="logo1">-</div>
+      <h2 id="teamA" style="margin:4px 0;font-size:16px;">-</h2>
+      <div class="score" id="mainScore">--/--<br><small>(--)</small></div>
+      <div class="role" id="battingInfo"><span class="strike-mark">*</span> -<br>-</div>
+    </div>
+
+    <div class="center" id="tossText">-</div>
+
+    <div class="team">
+      <div class="logo" id="logo2">-</div>
+      <h2 id="teamB" style="margin:4px 0;font-size:16px;">-</h2>
+      <div class="score" style="color:#999" id="teamBScore">Yet to bat</div>
+      <div class="role" id="bowlingInfo">-<br>Last: -<br>This Over: <span class="mini-over"><span class="ball-dot">-</span></span></div>
+    </div>
+  </div>
+
+  <div class="sub"><span class="status-pill" id="statusPill"><span class="pulse"></span><span id="liveBadgeText">Live Match</span></span></div>
+  <div class="info" id="liveInfo">Waiting for admin data</div>
+</div>
+
+<div class="over-strip">
+  <div id="allOverStrip" class="over-strip-track">
+    <div class="over-row">
+      <div class="bowler-line">Over: -</div>
+      <div class="mini-over"><span class="ball-dot">-</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="app.openTab('overview',this)">Overview</button>
+  <button class="tab" onclick="app.openTab('scorecard',this)">Scorecard</button>
+  <button class="tab" onclick="app.openTab('commentary',this)">Commentary</button>
+  <button class="tab" onclick="app.openTab('stats',this)">Stats</button>
+  <button class="tab" onclick="app.openTab('players',this)">Players</button>
+  <button class="tab" onclick="app.openTab('matches',this)">Matches</button>
+  <button class="tab" onclick="app.openTab('league',this)">League</button>
+</div>
+
+<div id="overview" class="content active">
+  <div class="card">
+    <h3>Live Match</h3>
+    <div class="p-stat"><span>Score:</span><b><span id="overviewScore">--/-- (--)</span></b></div>
+    <div class="p-stat"><span>Toss:</span><b><span id="overviewToss">-</span></b></div>
+    <div class="p-stat"><span>CRR:</span><b><span id="overviewCRR">0.00</span></b></div>
+    <div class="p-stat"><span>Extras:</span><b><span id="overviewExtras">0</span></b></div>
+    <div class="p-stat"><span>Last Wicket:</span><b><span id="overviewLastWicket">-</span></b></div>
+  </div>
+
+  <div class="quick-grid">
+    <div class="quick-card"><span>Target</span><b id="quickTarget">-</b></div>
+    <div class="quick-card"><span>Need</span><b id="quickNeed">-</b></div>
+    <div class="quick-card"><span>RRR</span><b id="quickRRR">-</b></div>
+    <div class="quick-card"><span>Partnership</span><b id="quickPartnership">0 (0)</b></div>
+  </div>
+
+  <div class="card">
+    <h3>Highlights</h3>
+    <div id="highlightsList" style="margin-top:10px;"><span style="color:#999;font-size:13px;">No highlights yet</span></div>
+  </div>
+
+</div>
+
+<div id="scorecard" class="content">
+  <div class="team-tabs">
+    <div class="team-tab active" id="teamTabA" onclick="app.switchScorecard('teamA',this)">Team A</div>
+    <div class="team-tab" id="teamTabB" onclick="app.switchScorecard('teamB',this)">Team B</div>
+  </div>
+
+  <h3 id="batScoreHeading">Team A Scoreboard</h3>
+  <table>
+    <thead>
+      <tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr>
+    </thead>
+    <tbody id="battingTable"></tbody>
+  </table>
+
+  <h3 id="bowlScoreHeading">Team B Scoreboard</h3>
+  <table>
+    <thead>
+      <tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr>
+    </thead>
+    <tbody id="bowlingTable"></tbody>
+  </table>
+</div>
+
+<div id="commentary" class="content">
+  <h3>Commentary</h3>
+  <div id="commentaryList" style="margin-top:10px;"><span style="color:#999;font-size:13px;">No commentary yet</span></div>
+</div>
+
+<div id="stats" class="content">
+  <div class="stats-grid">
+    <div class="stat-tile"><span>Score</span><b id="statScoreFull">0/0 (0.0)</b></div>
+    <div class="stat-tile"><span>CRR</span><b id="statCRR2">0.00</b></div>
+    <div class="stat-tile"><span>Projected</span><b id="statProjected">0</b></div>
+    <div class="stat-tile"><span>Balls Left</span><b id="statBallsLeft">-</b></div>
+    <div class="stat-tile"><span>Target</span><b id="statTarget2">-</b></div>
+    <div class="stat-tile"><span>Need</span><b id="statNeed2">-</b></div>
+    <div class="stat-tile"><span>RRR</span><b id="statRRR2">-</b></div>
+    <div class="stat-tile"><span>Extras</span><b id="statExtras2">0</b></div>
+    <div class="stat-tile"><span>4s</span><b id="statFours">0</b></div>
+    <div class="stat-tile"><span>6s</span><b id="statSixes">0</b></div>
+    <div class="stat-tile stat-wide"><span>Top Batter</span><b id="statTopBatter">-</b></div>
+    <div class="stat-tile stat-wide"><span>Best Bowler</span><b id="statBestBowler">-</b></div>
+  </div>
+  <div class="card">
+    <h3>Match Stats</h3>
+    <div class="p-stat"><span>Total Runs:</span><b id="statRuns">0</b></div>
+    <div class="p-stat"><span>Wickets:</span><b id="statWickets">0</b></div>
+    <div class="p-stat"><span>Overs:</span><b id="statOvers">0.0</b></div>
+    <div class="p-stat"><span>Run Rate:</span><b id="statCRR">0.00</b></div>
+    <div class="p-stat"><span>Extras:</span><b id="statExtras">0</b></div>
+    <div class="p-stat"><span>Target:</span><b id="statTarget">-</b></div>
+    <div class="p-stat"><span>Need:</span><b id="statNeed">-</b></div>
+    <div class="p-stat"><span>Partnership:</span><b id="statPartnership">0 (0)</b></div>
+    <div class="p-stat"><span>Last Wicket:</span><b id="statLastWicket">-</b></div>
+  </div>
+  <div class="card">
+    <h3>Fall of Wickets</h3>
+    <div id="fowList"><span style="color:#999;font-size:13px;">No wickets yet</span></div>
+  </div>
+  <div class="card">
+    <h3>Batting Impact</h3>
+    <div id="battingImpactList" class="mini-list"><span style="color:#999;font-size:13px;">No batting data yet</span></div>
+  </div>
+</div>
+
+<div id="players" class="content">
+  <h3>Players</h3>
+  <div id="playerProfile"></div>
+  <div id="playersList" style="margin-top:10px;"></div>
+</div>
+
+<div id="matches" class="content">
+  <div class="card">
+    <h3>Matches</h3>
+    <div class="p-stat"><span>Total Matches:</span><b id="totalMatchesCount">0</b></div>
+    <div id="matchesList" style="margin-top:8px;"></div>
+  </div>
+</div>
+
+<div id="league" class="content">
+  <div class="card">
+    <h3 id="leagueTitle">League</h3>
+    <div class="quick-grid">
+      <div class="quick-card"><span>Teams</span><b id="leagueTeamsCount">0</b></div>
+      <div class="quick-card"><span>Matches</span><b id="leagueScheduleCount">0</b></div>
+      <div class="quick-card"><span>Completed</span><b id="leagueCompletedCount">0</b></div>
+      <div class="quick-card"><span>Pending</span><b id="leagueUpcomingCount">0</b></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Points Table</h3>
+    <table>
+      <thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>NRR</th></tr></thead>
+      <tbody id="leaguePointsBody"></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Upcoming Matches</h3>
+    <div id="leagueUpcomingList"></div>
+  </div>
+</div>
+
+<script type="module" src="./js/user.js"></script>
+
+</body>
+</html>
+

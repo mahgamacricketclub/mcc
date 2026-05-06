@@ -1,0 +1,33 @@
+﻿*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;color:#111827;background:#e9eff5}
+.page{max-width:980px;margin:24px auto;background:#fff;padding:30px;border:1px solid #d6e0ea;box-shadow:0 18px 48px rgba(15,23,42,.12)}
+.top{display:flex;justify-content:space-between;gap:18px;border-bottom:4px solid #10243d;padding:0 0 16px}
+h1{margin:0;font-size:30px;line-height:1.12;color:#10243d;letter-spacing:0}
+.muted{color:#64748b;font-size:12px;line-height:1.5}
+.result{display:inline-block;font-size:20px;font-weight:900;color:#14532d;background:#ecfdf5;border:1px solid #bbf7d0;border-radius:999px;margin-top:10px;padding:8px 12px}
+.scoreline{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:20px 0}
+.scorebox{border:1px solid #dce6ef;padding:16px;border-radius:8px;background:linear-gradient(180deg,#fff,#f8fafc)}
+.scorebox b{display:block;font-size:28px;color:#10243d;margin-top:5px}
+h2{font-size:18px;margin:24px 0 9px;color:#10243d}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;margin-bottom:14px;border:1px solid #dfe7ef;border-radius:8px;overflow:hidden}
+th,td{border:0;border-bottom:1px solid #e5edf4;padding:9px 8px;text-align:center}
+tr:last-child td{border-bottom:0}
+th{background:#f1f5f9;text-transform:uppercase;font-size:11px;color:#475569}
+td:first-child,th:first-child{text-align:left}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.commentary{font-size:12px;line-height:1.65;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px}
+.innings-separator{border:0;border-top:6px solid #10243d;margin:30px 0 18px}
+.innings-label{display:inline-block;background:#10243d;color:#fff;padding:8px 13px;border-radius:6px;font-size:12px;font-weight:900;text-transform:uppercase;margin-bottom:10px;letter-spacing:.04em}
+.actions{position:sticky;top:0;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border-bottom:1px solid #dfe7ef;padding:10px 0;margin:-30px -30px 20px;display:flex;justify-content:flex-end;gap:8px;z-index:3}
+button{border:0;background:#10243d;color:#fff;border-radius:7px;padding:10px 14px;font-weight:900;cursor:pointer}
+button.secondary{background:#e2e8f0;color:#10243d}
+@media print{
+  body{background:#fff}
+  .page{max-width:none;margin:0;border:0;padding:0;box-shadow:none}
+  .actions{display:none}
+  .result{border-color:#d9eadf;background:#fff}
+  table{page-break-inside:auto}
+  tr{page-break-inside:avoid;page-break-after:auto}
+}
+@media(max-width:720px){.top,.scoreline,.grid{grid-template-columns:1fr;display:grid}.page{margin:0;padding:16px;box-shadow:none}.actions{margin:-16px -16px 16px}h1{font-size:24px}.scorebox b{font-size:24px}table{display:block;overflow-x:auto;white-space:nowrap}}
+
