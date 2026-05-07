@@ -1,4 +1,4 @@
-﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+﻿﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { firebaseConfig } from "../firebase/firebase-config.js";
 
@@ -6,6 +6,7 @@ const app_firebase = initializeApp(firebaseConfig);
 const db = getFirestore(app_firebase);
 const params = new URLSearchParams(location.search);
 const MATCH_ID = (params.get("match") || "liveMatch1").trim();
+const USER_MATCH_BACKUP_KEY = `cricket_user_match_backup_${MATCH_ID}`;
 
 window.app = {
   state: {},
@@ -17,6 +18,10 @@ window.app = {
 
   init() {
     this.showNoLive("Connecting to live match...");
+    this.loadMatchBackup();
+    document.addEventListener("keydown", (event) => {
+      if(event.key === "Escape") this.closeMatchModal();
+    });
     this.setupFirebase();
   },
 
@@ -38,13 +43,16 @@ window.app = {
     this.renderLeaguePanel();
   },
   showLatestCompletedNoLive(matchData) {
-    const teamA = matchData.battingTeam || matchData.teamA || "-";
-    const teamB = matchData.bowlingTeam || matchData.teamB || "-";
+    const titleTeams = String(matchData.title || "").split(" vs ");
+    const rawBatting = matchData.battingTeam || "";
+    const rawBowling = matchData.bowlingTeam || "";
+    const teamA = matchData.teamA || ((matchData.inningNumber || 2) > 1 ? rawBowling : rawBatting) || titleTeams[0] || "-";
+    const teamB = matchData.teamB || ((matchData.inningNumber || 2) > 1 ? rawBatting : rawBowling) || titleTeams[1] || "-";
     const leftShort = this.teamShort(matchData, teamA);
     const rightShort = this.teamShort(matchData, teamB);
     const setText = (id, value) => { const el = document.getElementById(id); if (el) el.innerText = value; };
     const setHtml = (id, value) => { const el = document.getElementById(id); if (el) el.innerHTML = value; };
-    setText("matchTitle", "No Live Match");
+    setText("matchTitle", `${matchData.title || "Last Match"} > ${MATCH_ID}`);
     setText("teamA", leftShort);
     setText("teamB", rightShort);
     setHtml("logo1", this.logoHtml(matchData, teamA));
@@ -57,7 +65,8 @@ window.app = {
       tossEl.classList.remove("live", "delay", "break", "locked", "result", "pending", "ready");
       tossEl.classList.add("result");
     }
-    setText("liveInfo", matchData.winnerText || "Latest match completed");
+    const mom = this.manOfMatch(matchData);
+    setText("liveInfo", `${matchData.winnerText || "Latest match completed"}${mom ? ` · Man of the Match: ${mom.name}` : ""}`);
     setHtml("battingInfo", '<span class="batter-line">No live match</span><span class="batter-line">Start next match from admin</span>');
     setHtml("bowlingInfo", `${this.safe(matchData.title || `${teamA} vs ${teamB}`)}<br>Completed`);
     setHtml("allOverStrip", '<div class="over-row"><div class="bowler-line">Latest result</div><div class="mini-over"><span class="ball-dot">OK</span></div></div>');
@@ -70,6 +79,7 @@ window.app = {
     onSnapshot(doc(db, "matches", MATCH_ID), (snap) => {
       if (snap.exists()) {
         this.state = snap.data() || {};
+        this.persistMatchBackup();
         this.scheduleRender();
       } else {
         this.showNoLive("No live match created yet");
@@ -78,6 +88,21 @@ window.app = {
       console.error("Firebase Error:", error);
       this.showNoLive("Unable to connect to live match");
     });
+  },
+  loadMatchBackup(){
+    try{
+      const raw=localStorage.getItem(USER_MATCH_BACKUP_KEY);
+      if(!raw) return;
+      const saved=JSON.parse(raw);
+      if(!saved || !saved.state || typeof saved.state!=="object") return;
+      this.state=saved.state;
+      this.scheduleRender();
+    }catch(e){ console.warn("User match backup load failed",e); }
+  },
+  persistMatchBackup(){
+    try{
+      localStorage.setItem(USER_MATCH_BACKUP_KEY,JSON.stringify({state:this.state||{},timestamp:Date.now()}));
+    }catch(e){ console.warn("User match backup failed",e); }
   },
   scheduleRender() {
     if(this.renderQueued) return;
@@ -150,6 +175,71 @@ window.app = {
     return fallback || "-";
   },
 
+  manOfMatch(matchData) {
+    const stored = matchData?.mvp || matchData?.manOfMatch || matchData?.playerOfMatch;
+    if(stored) return { name: String(stored), note: "official pick", score: 0 };
+    const latestLog = Array.isArray(this.state?.mvpLog)
+      ? this.state.mvpLog.find(x => (x?.match === matchData?.title) || (x?.match === matchData?.matchTitle))
+      : null;
+    if(latestLog?.mvp) return { name: String(latestLog.mvp), note: "official pick", score: 0 };
+
+    const players = {};
+    const ensure = (name) => {
+      if(!name || name === "-") return null;
+      if(!players[name]) players[name] = { name, runs:0, balls:0, fours:0, sixes:0, wkts:0, bowlingBalls:0, bowlingRuns:0, score:0 };
+      return players[name];
+    };
+    const addBat = (row) => {
+      const p = ensure(row?.name);
+      if(!p) return;
+      const runs = Number(row.r || 0);
+      const balls = Number(row.b || 0);
+      const fours = Number(row.f || 0);
+      const sixes = Number(row.s || 0);
+      p.runs += runs;
+      p.balls += balls;
+      p.fours += fours;
+      p.sixes += sixes;
+      p.score += runs + (fours * 2) + (sixes * 3);
+      if(runs >= 50) p.score += 10;
+      else if(runs >= 30) p.score += 5;
+      if(balls > 0 && runs >= 20 && (runs / balls) >= 1.5) p.score += 6;
+    };
+    const addBowl = (stats) => Object.entries(stats || {}).forEach(([name, s]) => {
+      const p = ensure(name);
+      if(!p) return;
+      const wkts = Number(s?.wkts || 0);
+      const balls = Number(s?.balls || 0);
+      const runs = Number(s?.runs || 0);
+      p.wkts += wkts;
+      p.bowlingBalls += balls;
+      p.bowlingRuns += runs;
+      p.score += (wkts * 25);
+      if(wkts >= 3) p.score += 12;
+      if(balls >= 6 && runs <= balls) p.score += 5;
+    });
+
+    const details = matchData?.inningsDetails && typeof matchData.inningsDetails === "object" ? Object.values(matchData.inningsDetails) : [];
+    if(details.length){
+      details.forEach(d => {
+        (Array.isArray(d?.battingScorecard) ? d.battingScorecard : []).forEach(addBat);
+        addBowl(d?.bowlerStats);
+      });
+    } else {
+      Object.values(matchData?.completedInnings || {}).forEach(rows => (Array.isArray(rows) ? rows : []).forEach(addBat));
+      if(Array.isArray(matchData?.battingScorecard)) matchData.battingScorecard.forEach(addBat);
+      Object.values(matchData?.completedBowling || {}).forEach(addBowl);
+      addBowl(matchData?.bowlerStats);
+    }
+
+    const best = Object.values(players).sort((a,b) => b.score - a.score || b.runs - a.runs || b.wkts - a.wkts)[0];
+    if(!best) return null;
+    const parts = [];
+    if(best.runs) parts.push(`${best.runs} runs`);
+    if(best.wkts) parts.push(`${best.wkts} wkts`);
+    return { name: best.name, note: parts.join(", ") || "best impact", score: best.score };
+  },
+
   isWicketBall(value) {
     return /(^|\s)W(\d+)?(\s|\(|$)/.test(String(value || ""));
   },
@@ -169,13 +259,22 @@ window.app = {
     this.render();
   },
   switchMatchesFilter(filter) {
-    this.matchesFilter = filter;
+    this.matchesFilter = ["all", "live", "complete", "pending"].includes(filter) ? filter : "all";
     this.renderMatchesList();
   },
   showMatchResult(index) {
     this.selectedMatchIndex = index;
     this.scorecardView = "teamA";
     this.render();
+  },
+  closeMatchModal(event) {
+    if(event && event.currentTarget && event.target !== event.currentTarget) return;
+    const modal = document.getElementById("matchDetailModal");
+    if(modal){
+      modal.classList.remove("show");
+      modal.setAttribute("aria-hidden", "true");
+    }
+    document.body.classList.remove("modal-open");
   },
   backToLive() {
     this.selectedMatchIndex = undefined;
@@ -190,8 +289,8 @@ window.app = {
     const listEl = document.getElementById("matchesList");
     if(!listEl) return;
     document.querySelectorAll(".matches-tab").forEach(tile => tile.classList.remove("active"));
-    const filterId = `matchesFilter${this.matchesFilter.charAt(0).toUpperCase()}${this.matchesFilter.slice(1)}`;
-    document.getElementById(filterId)?.classList.add("active");
+    const filterIds = { all: "matchesFilterAll", live: "matchesFilterLive", complete: "matchesFilterComplete", pending: "matchesFilterPending" };
+    document.getElementById(filterIds[this.matchesFilter] || filterIds.all)?.classList.add("active");
     const liveMatch = (this.state.liveStarted && !this.state.matchFinished) ? `<div class="match-group-title">Live</div><div class="match-result-card"><div class="match-result-title">${this.safe(this.state.matchTitle || "Live Match")}</div><div class="match-result-meta">${this.safe(this.state.battingTeam || "-")} batting · ${Number(this.state.runs||0)}/${Number(this.state.wkts||0)} (${this.overText(this.state.balls||0)})</div></div>` : "";
     const upcoming = pendingMatches.slice(0, 10).map(m => `<div class="match-result-card"><div class="match-result-title">${this.safe(m.teamA)} vs ${this.safe(m.teamB)}</div><div class="match-result-meta">${this.safe(m.stage || "League")} · ${this.safe(m.round || "")}${m.date?`<br>${this.safe(m.date)} ${this.safe(m.time||"")}`:""}${m.venue?` · ${this.safe(m.venue)}`:""}</div></div>`).join("");
     const completed = history.map((x, i) => `<div class="match-result-card ${i===this.selectedMatchIndex?'active':''}" onclick="app.showMatchResult(${i})"><div class="match-result-title">${this.safe(x.title || "Match")}</div><div class="match-result-meta">${this.safe(x.leagueStage || ("Match " + (history.length - i)))} · ${this.safe(x.winnerText || "-")}<br>${this.safe(x.firstInnings || "-")} ${x.secondInnings ? " / " + this.safe(x.secondInnings) : ""}</div></div>`).join("");
@@ -230,8 +329,84 @@ window.app = {
     if(upcoming) upcoming.innerHTML=schedule.filter(m=>m.status!=="done").slice(0,12).map(m=>`<div class="match-result-card"><div class="match-result-title">${this.safe(m.teamA)} vs ${this.safe(m.teamB)}</div><div class="match-result-meta">${this.safe(m.stage||"League")} · ${this.safe(m.round||"")}${m.date?`<br>${this.safe(m.date)} ${this.safe(m.time||"")}`:""}${m.venue?` · ${this.safe(m.venue)}`:""}</div></div>`).join("") || '<span style="color:#999;font-size:13px;">No upcoming matches</span>';
   },
   showPlayerProfile(team, player){
-    this.selectedPlayer={team,player};
-    this.renderPlayerProfile();
+    const modal = document.getElementById("matchDetailModal");
+    const body = document.getElementById("matchModalBody");
+    if(!modal || !body) return;
+    const meta = this.playerMeta(this.state, team, player);
+    const stats = this.playerTotalStats(player);
+    const battingText = `${Number(stats.runs || 0)} runs · ${Number(stats.balls || 0)} balls`;
+    const boundaryText = `${Number(stats.fours || 0)} fours · ${Number(stats.sixes || 0)} sixes`;
+    const bowlingText = `${Number(stats.wkts || 0)} wickets · ${this.overText(stats.bowlingBalls || 0)} overs · ${Number(stats.dots || 0)} dots`;
+    body.innerHTML = `
+      <div class="player-modal-head">
+        ${this.avatarHtml(this.state, team, player)}
+        <div>
+          <div class="match-modal-kicker">${this.safe(team)}</div>
+          <h2 class="match-modal-title" id="matchModalTitle">${this.safe(player)}</h2>
+          <div class="match-modal-result">${this.safe(meta.role || "Player")}</div>
+        </div>
+      </div>
+      <div class="match-modal-grid">
+        <div><span>Total Matches</span><b>${Number(stats.matches || 0)}</b></div>
+        <div><span>Batting Total</span><b>${this.safe(battingText)}</b></div>
+        <div><span>Boundaries</span><b>${this.safe(boundaryText)}</b></div>
+        <div><span>Bowling Total</span><b>${this.safe(bowlingText)}</b></div>
+        <div><span>Team</span><b>${this.safe(team)}</b></div>
+      </div>
+    `;
+    modal.classList.add("show");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  },
+  playerTotalStats(player){
+    const totals = { runs:0, balls:0, fours:0, sixes:0, wkts:0, bowlingBalls:0, bowlingRuns:0, dots:0, matches:0 };
+    const addBat = (row, seen) => {
+      if(!row || row.name !== player) return seen;
+      totals.runs += Number(row.r || 0);
+      totals.balls += Number(row.b || 0);
+      totals.fours += Number(row.f || 0);
+      totals.sixes += Number(row.s || 0);
+      return true;
+    };
+    const addBowling = (stats, seen) => {
+      const s = stats && stats[player];
+      if(!s) return seen;
+      totals.wkts += Number(s.wkts || 0);
+      totals.bowlingBalls += Number(s.balls || 0);
+      totals.bowlingRuns += Number(s.runs || 0);
+      totals.dots += Number(s.dots || s.dotBalls || s.dot || 0);
+      return true;
+    };
+    const history = Array.isArray(this.state.completedMatches) ? this.state.completedMatches : [];
+    history.forEach(match => {
+      let seen = false;
+      const details = match?.inningsDetails && typeof match.inningsDetails === "object" ? Object.values(match.inningsDetails) : [];
+      if(details.length){
+        details.forEach(d => {
+          (Array.isArray(d?.battingScorecard) ? d.battingScorecard : []).forEach(row => { seen = addBat(row, seen); });
+          seen = addBowling(d?.bowlerStats, seen);
+        });
+      } else {
+        Object.values(match?.completedInnings || {}).forEach(rows => (Array.isArray(rows) ? rows : []).forEach(row => { seen = addBat(row, seen); }));
+        if(Array.isArray(match?.battingScorecard)) match.battingScorecard.forEach(row => { seen = addBat(row, seen); });
+        Object.values(match?.completedBowling || {}).forEach(stats => { seen = addBowling(stats, seen); });
+        seen = addBowling(match?.bowlerStats, seen);
+      }
+      if(seen) totals.matches += 1;
+    });
+
+    [this.state.bat1, this.state.bat2].forEach(row => { addBat(row, false); });
+    if(this.state.bat1?.name === player || this.state.bat2?.name === player || this.state.bowler?.name === player) totals.matches += 1;
+    addBowling(this.state.bowlerStats, false);
+
+    const stored = this.state.tournamentStats?.players?.[player] || {};
+    if(!history.length && !totals.matches){
+      totals.runs = Number(stored.runs || 0);
+      totals.balls = Number(stored.balls || 0);
+      totals.wkts = Number(stored.wkts || 0);
+      totals.matches = Number(stored.matches || 0);
+    }
+    return totals;
   },
   renderPlayerProfile(){
     const box=document.getElementById("playerProfile");
@@ -239,7 +414,7 @@ window.app = {
     const sel=this.selectedPlayer;
     if(!sel){ box.innerHTML=""; return; }
     const meta=this.playerMeta(this.state, sel.team, sel.player);
-    const stats=this.state.tournamentStats?.players?.[sel.player] || {};
+    const stats=this.playerTotalStats(sel.player);
     box.innerHTML=`<div class="profile-card">${this.avatarHtml(this.state, sel.team, sel.player)}<div><h3 style="margin:0;">${this.safe(sel.player)}</h3><div class="role">${this.safe(sel.team)}</div></div></div>
       <div class="profile-stats">
         <div class="profile-stat"><span>Runs</span><b>${Number(stats.runs||0)}</b></div>
@@ -346,7 +521,9 @@ window.app = {
     const nonStrikerRuns = Number(nonStrikerObj.r || 0);
     const nonStrikerBalls = Number(nonStrikerObj.b || 0);
     const bowlerObj = matchData.bowler || {};
-    const bowlerBalls = Number(bowlerObj.balls || 0);
+    const bowlerName = bowlerObj.name || "-";
+    const bowlerMatchStats = (matchData.bowlerStats && bowlerName && matchData.bowlerStats[bowlerName]) ? matchData.bowlerStats[bowlerName] : null;
+    const bowlerBalls = Number(bowlerMatchStats ? (bowlerMatchStats.balls || 0) : (bowlerObj.balls || 0));
     const bowlerOvers = this.overText(bowlerBalls);
     const thisOverBalls = matchData.over || [];
     const thisOverLine = thisOverBalls.length ? thisOverBalls.map((ball) => {
@@ -358,11 +535,11 @@ window.app = {
       return `<span class="ball-dot ${cls}">${display}</span>`;
     }).join("") : `<span class="ball-dot">-</span>`;
     document.getElementById("battingInfo").innerHTML = `<span class="batter-line striker-line">${this.safe(strikerName)} (${strikerRuns}/${strikerBalls}) <span class="strike-mark">🏏</span></span><span class="batter-line">${this.safe(nonStrikerName)} (${nonStrikerRuns}/${nonStrikerBalls})</span>`;
-    document.getElementById("bowlingInfo").innerHTML = `${this.safe(bowlerObj.name || "-")} (${bowlerOvers})<br>Last: ${this.safe(matchData.lastOverBowler || "-")}<br>This Over:<div class="mini-over">${thisOverLine}</div>`;
+    document.getElementById("bowlingInfo").innerHTML = `${this.safe(bowlerName)} (${bowlerOvers})<br>Last: ${this.safe(matchData.lastOverBowler || "-")}<br>This Over:<div class="mini-over">${thisOverLine}</div>`;
     const overRows = [];
     if(thisOverBalls.length){
       const currentNo = Math.floor(Number(matchData.balls || 0) / 6) + 1;
-      overRows.push(`<div class="over-row"><div class="bowler-line">Over ${currentNo} - ${this.safe(bowlerObj.name || "-")}</div><div class="mini-over">${thisOverLine}</div></div>`);
+      overRows.push(`<div class="over-row"><div class="bowler-line">Over ${currentNo} - ${this.safe(bowlerName)}</div><div class="mini-over">${thisOverLine}</div></div>`);
     }
     (matchData.overSummary || []).forEach((ov) => {
       const timeline = Array.isArray(ov.timeline) ? ov.timeline : [];
@@ -400,8 +577,9 @@ window.app = {
     statusPill.classList.toggle("locked", !!matchData.scoringLocked);
 
     const tossPending = !(matchData.tossText && matchData.tossText.trim() && matchData.tossText.toLowerCase() !== "toss pending");
+    const matchMvp = this.manOfMatch(matchData);
     document.getElementById("liveInfo").innerText = matchData.matchFinished && matchData.winnerText
-      ? matchData.winnerText
+      ? `${matchData.winnerText}${matchMvp ? ` · Man of the Match: ${matchMvp.name}` : ""}`
       : `${tossPending ? `${batTeamShort} batting` : matchData.tossText} · CRR: ${crr}${target ? ` · Need ${need} from ${remBalls}` : ""}`;
 
     document.getElementById("overviewScore").innerText = `${runs}/${wickets} (${overs})`;
@@ -414,9 +592,13 @@ window.app = {
     document.getElementById("quickRRR").innerText = rrr;
     document.getElementById("quickPartnership").innerText = `${Number(matchData.partnershipRuns || 0)} (${Number(matchData.partnershipBalls || 0)})`;
 
-    document.getElementById("highlightsList").innerHTML = (matchData.highlights || []).length > 0
+    const mvpHtml = (matchData.matchFinished && matchMvp)
+      ? `<div class="mvp-card"><span>Man of the Match</span><b>${this.safe(matchMvp.name)}</b><small>${this.safe(matchMvp.note || "best impact")}</small></div>`
+      : "";
+    const highlightsHtml = (matchData.highlights || []).length > 0
       ? matchData.highlights.slice(0, 8).map(h => `<div class="comment"><span class="ball">${this.safe(h.time || "")}</span> - ${this.safe(h.text || "")}</div>`).join("")
       : '<span style="color:#999;font-size:13px;">No highlights yet</span>';
+    document.getElementById("highlightsList").innerHTML = mvpHtml + highlightsHtml;
     const activeTab = document.querySelector(".content.active")?.id || "overview";
     if(activeTab === "overview"){
       this.renderMatchesList();
@@ -561,11 +743,11 @@ window.app = {
     const teamAPlayers = (matchData.teams && matchData.teams[battingTeam]) ? matchData.teams[battingTeam] : [];
     const teamBPlayers = (matchData.teams && matchData.teams[bowlingTeam]) ? matchData.teams[bowlingTeam] : [];
     const teamAHtml = teamAPlayers.length
-      ? teamAPlayers.map(p => `<div class="player" onclick="app.showPlayerProfile(decodeURIComponent('${encodeURIComponent(battingTeam)}'),decodeURIComponent('${encodeURIComponent(p)}'))">${this.avatarHtml(matchData, battingTeam, p)}<div><b>${this.safe(p)}</b><div class="role">${batTeamShort}</div></div></div>`).join("")
-      : `<div class="player"><div class="avatar">-</div><div><b>No players</b><div class="role">${batTeamShort}</div></div></div>`;
+      ? `<div class="players-grid">${teamAPlayers.map(p => `<div class="player player-tile" onclick="app.showPlayerProfile(decodeURIComponent('${encodeURIComponent(battingTeam)}'),decodeURIComponent('${encodeURIComponent(p)}'))">${this.avatarHtml(matchData, battingTeam, p)}<div><b>${this.safe(p)}</b><div class="role">${batTeamShort}</div></div></div>`).join("")}</div>`
+      : `<div class="players-grid"><div class="player player-tile empty"><div class="avatar">-</div><div><b>No players</b><div class="role">${batTeamShort}</div></div></div></div>`;
     const teamBHtml = teamBPlayers.length
-      ? teamBPlayers.map(p => `<div class="player" onclick="app.showPlayerProfile(decodeURIComponent('${encodeURIComponent(bowlingTeam)}'),decodeURIComponent('${encodeURIComponent(p)}'))">${this.avatarHtml(matchData, bowlingTeam, p)}<div><b>${this.safe(p)}</b><div class="role">${bowlTeamShort}</div></div></div>`).join("")
-      : `<div class="player"><div class="avatar">-</div><div><b>No players</b><div class="role">${bowlTeamShort}</div></div></div>`;
+      ? `<div class="players-grid">${teamBPlayers.map(p => `<div class="player player-tile" onclick="app.showPlayerProfile(decodeURIComponent('${encodeURIComponent(bowlingTeam)}'),decodeURIComponent('${encodeURIComponent(p)}'))">${this.avatarHtml(matchData, bowlingTeam, p)}<div><b>${this.safe(p)}</b><div class="role">${bowlTeamShort}</div></div></div>`).join("")}</div>`
+      : `<div class="players-grid"><div class="player player-tile empty"><div class="avatar">-</div><div><b>No players</b><div class="role">${bowlTeamShort}</div></div></div></div>`;
     document.getElementById("playersList").innerHTML = `
       <h4 style="margin:4px 0 8px;">${batTeamShort} Players</h4>
       ${teamAHtml}
@@ -584,5 +766,6 @@ window.app = {
 };
 
 window.app.init();
+
 
 

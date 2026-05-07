@@ -33,13 +33,20 @@
   <div class="wrap">
     <div id="homePage" class="page home-grid active">
       <div>
-        <div class="panel">
+        <div class="panel score-top-panel">
+          <div class="score">
+            <div><b><span id="runs">0</span>-<span id="wkts">0</span></b><div class="muted">Overs: <span id="overs">0.0</span></div></div>
+            <div class="crr"><div class="muted">CRR</div><div class="v" id="crr">0.00</div></div>
+          </div>
+        </div>
+
+        <div class="panel snapshot-panel">
           <h3>Live Snapshot</h3>
-          <table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>
+          <table class="snapshot-table"><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>
             <tr><td><span id="bat1Name">-</span> <b id="strike1" style="color:#15803d">*</b></td><td id="bat1r">0</td><td id="bat1b">0</td><td id="bat1f">0</td><td id="bat1s">0</td><td id="bat1sr">0.00</td></tr>
             <tr><td><span id="bat2Name">-</span> <b id="strike2" style="color:#15803d"></b></td><td id="bat2r">0</td><td id="bat2b">0</td><td id="bat2f">0</td><td id="bat2s">0</td><td id="bat2sr">0.00</td></tr>
           </tbody></table>
-          <table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody><tr><td id="bowlerName">-</td><td id="bowlO">0.0</td><td id="bowlR">0</td><td id="bowlW">0</td><td id="bowlER">0.00</td></tr></tbody></table>
+          <table class="snapshot-table bowler-snapshot"><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody><tr><td id="bowlerName">-</td><td id="bowlO">0.0</td><td id="bowlR">0</td><td id="bowlW">0</td><td id="bowlER">0.00</td></tr></tbody></table>
         </div>
 
         <div class="panel">
@@ -50,23 +57,12 @@
             <div class="metric"><div class="muted">Innings</div><div class="value" id="inningsNo">1</div></div>
             <div class="metric"><div class="muted">Wicket Type</div><div class="value" id="wicketTypeHint">none</div></div>
           </div>
-          <div class="actions wicket-actions">
-            <button class="btn danger" onclick="app.setWicketType('Bowled')">Bowled</button>
-            <button class="btn danger" onclick="app.setWicketType('LBW')">LBW</button>
-            <button class="btn danger" onclick="app.setWicketType('Caught')">Caught</button>
-            <button class="btn danger" onclick="app.setWicketType('Run Out')">Run Out</button>
-            <button class="btn secondary" onclick="app.setWicketType('')">Clear</button>
-          </div>
         </div>
       </div>
 
-      <div>
+      <div class="admin-main-column">
         <div class="panel live-control-panel">
-          <h3>Scoreboard <span class="section-kicker">Live Control</span></h3>
-          <div class="score">
-            <div><b><span id="runs">0</span>-<span id="wkts">0</span></b><div class="muted">Overs: <span id="overs">0.0</span></div></div>
-            <div class="crr"><div class="muted">CRR</div><div class="v" id="crr">0.00</div></div>
-          </div>
+          <h3>Live Control <span class="section-kicker">Broadcast</span></h3>
           <div class="control-dock">
             <div class="control-main">
               <div class="control-head">
@@ -85,9 +81,8 @@
             <div class="lock-panel">
               <button id="lockBtn" class="btn danger" onclick="app.setScoringLock(true)">Lock Scoring</button>
               <button id="unlockBtn" class="btn secondary" onclick="app.setScoringLock(false)">Unlock Scoring</button>
-              <button id="swapBatsmanBtn" class="btn secondary" onclick="app.swapBatsman()">Swap Batsman</button>
-              <button id="retireBatsmanBtn" class="btn secondary" onclick="app.retireBatsman()">Retire Batsman</button>
               <button id="switchInningsBtn" class="btn secondary" onclick="app.switchInnings()">Switch Innings</button>
+              <button id="manualCompleteBtn" class="btn warn" onclick="app.completeMatch()">Complete Match</button>
             </div>
           </div>
           <details class="share-details">
@@ -126,11 +121,15 @@
             <label class="opt"><input type="checkbox" id="noball">No Ball</label>
             <label class="opt"><input type="checkbox" id="byes">Byes</label>
             <label class="opt"><input type="checkbox" id="legbyes">Leg Byes</label>
-            <label class="opt"><input type="checkbox" id="wicket">Wicket</label>
+            <label class="opt"><input type="checkbox" id="wicket" onchange="app.handleWicketToggle(this)">Wicket</label>
           </div>
           <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:8px;">
             <button class="btn danger" onclick="app.undo()">Undo (Quick)</button>
             <button class="btn secondary" onclick="app.clearChecks()">Clear Type</button>
+          </div>
+          <div class="actions batter-actions">
+            <button id="swapBatsmanBtn" class="btn secondary" onclick="app.swapBatsman()">Swap Batsman</button>
+            <button id="retireBatsmanBtn" class="btn secondary" onclick="app.retireBatsman()">Retire Batsman</button>
           </div>
           <div class="runs">
             <button class="run" onclick="app.addBall(0)">0</button><button class="run" onclick="app.addBall(1)">1</button><button class="run" onclick="app.addBall(2)">2</button><button class="run" onclick="app.addBall(3)">3</button>
@@ -408,6 +407,30 @@
     </div>
   </div>
   <div id="popup" class="popup"></div>
+  <div id="wicketOverlay" class="wicket-overlay">
+    <div class="wicket-modal">
+      <div class="picker-title">Wicket Detail</div>
+      <div class="picker-help">Type select karo. Name optional hai.</div>
+      <div class="wicket-type-grid">
+        <button class="wicket-type-btn active" data-type="Bowled" onclick="app.selectWicketModalType('Bowled')">Bowled</button>
+        <button class="wicket-type-btn" data-type="LBW" onclick="app.selectWicketModalType('LBW')">LBW</button>
+        <button class="wicket-type-btn" data-type="Caught" onclick="app.selectWicketModalType('Caught')">Caught</button>
+        <button class="wicket-type-btn" data-type="Run Out" onclick="app.selectWicketModalType('Run Out')">Run Out</button>
+        <button class="wicket-type-btn" data-type="Stumping" onclick="app.selectWicketModalType('Stumping')">Stumping</button>
+      </div>
+      <label id="wicketOutLabel">Out batsman</label>
+      <select id="wicketOutBatsman">
+        <option value="">Striker</option>
+      </select>
+      <label id="wicketHelperLabel">Fielder / keeper / throw name optional</label>
+      <input id="wicketHelperName" list="wicketHelperPlayers" placeholder="Optional name">
+      <datalist id="wicketHelperPlayers"></datalist>
+      <div class="picker-actions">
+        <button class="btn secondary" onclick="app.cancelWicketModal()">Cancel</button>
+        <button class="btn" onclick="app.applyWicketModal()">Done</button>
+      </div>
+    </div>
+  </div>
   <div id="resultOverlay" class="result-overlay">
     <div class="result-modal">
       <div class="result-title">Match Finished</div>

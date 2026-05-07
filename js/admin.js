@@ -9,6 +9,7 @@ const TEAM_CATALOG_ID = "teamCatalog";
 const TEAM_BACKUP_KEY = "cricket_team_catalog_backup";
 const SAVED_LINKS_KEY = "cricket_saved_links";
 const UNDO_BACKUP_KEY = `cricket_undo_backup_${MATCH_ID}`;
+const MATCH_BACKUP_KEY = `cricket_live_match_backup_${MATCH_ID}`;
 const ADMIN_PASSWORD = "Sahib12@";
 const CLOUD_NAME = "dsnuatuc8";
 const UPLOAD_PRESET = "ml_default";
@@ -25,7 +26,7 @@ window.app = {
     over:[],overSummary:[],commentary:[],highlights:[],history:[],ballHistory:[],ballEvents:[],
     inningNumber:1,matchTitle:"Select Teams",battingTeam:"",bowlingTeam:"",tossText:"Toss pending",
     tossWinner:"A",tossDecision:"bat",
-    wicketType:"",partnershipRuns:0,partnershipBalls:0,lastWicket:"-",lastOverBowler:"-",firstInningsScore:null,firstInningsWkts:null,target:null,totalOvers:20,matchFinished:false,winnerText:"",
+    wicketType:"",wicketHelper:"",partnershipRuns:0,partnershipBalls:0,lastWicket:"-",lastOverBowler:"-",firstInningsScore:null,firstInningsWkts:null,target:null,totalOvers:20,matchFinished:false,winnerText:"",
     scoringLocked:false,bowlerStats:{},fallOfWickets:[],completedMatches:[],resultRecorded:false,tournamentStats:{players:{}},pointsTable:{},mvpLog:[],archived:false,offlineQueue:[],
     dismissedPlayers:[],
     liveControl:{mode:"live",note:""},
@@ -65,7 +66,7 @@ window.app = {
   startApp(){
     const overlay=document.getElementById("authOverlay");
     if(overlay) overlay.style.display="none";
-    this.loadTeamBackup(); this.ensureTeamData(); this.refreshTeamSelectors(); this.setupTeamCatalog(); this.setupFirebase(); this.setupEventListeners(); this.renderBench(); this.updateLiveControls(); this.updateMatchPreview(); this.updateShareQr(); this.renderSavedLinks(); this.renderLeaguePage(); this.setStatus(`Firebase: ready (${MATCH_ID})`,"success");
+    this.loadTeamBackup(); this.loadMatchBackup(); this.ensureTeamData(); this.refreshTeamSelectors(); this.setupTeamCatalog(); this.setupFirebase(); this.setupEventListeners(); this.renderBench(); this.updateLiveControls(); this.updateMatchPreview(); this.updateShareQr(); this.renderSavedLinks(); this.renderLeaguePage(); this.setStatus(`Firebase: loading (${MATCH_ID})`,"");
   },
   switchPage(page){
     const home=page==='home';
@@ -459,7 +460,7 @@ window.app = {
       runs:0,wkts:0,balls:0,extras:0,striker:1,
       bat1:{name:"-",r:0,b:0,f:0,s:0}, bat2:{name:"-",r:0,b:0,f:0,s:0}, bowler:{name:"-",balls:0,m:0,r:0,w:0},
       over:[],overSummary:[],commentary:[],highlights:[],history:[],ballHistory:[],ballEvents:[],
-      inningNumber:1,wicketType:"",partnershipRuns:0,partnershipBalls:0,lastWicket:"-",lastOverBowler:"",
+      inningNumber:1,wicketType:"",wicketHelper:"",partnershipRuns:0,partnershipBalls:0,lastWicket:"-",lastOverBowler:"",
       firstInningsScore:null,firstInningsWkts:null,target:null,matchFinished:false,winnerText:"",
       scoringLocked:false,bowlerStats:{},fallOfWickets:[],resultRecorded:false,dismissedPlayers:[],
       liveControl:{mode:"live",note:"Live"},
@@ -674,6 +675,31 @@ window.app = {
       localStorage.setItem(TEAM_BACKUP_KEY,JSON.stringify({teams:this.state.teams||{},teamInfo:this.state.teamInfo||{},timestamp:Date.now()}));
     }catch(e){ console.error(e); }
   },
+  loadMatchBackup(){
+    try{
+      const raw=localStorage.getItem(MATCH_BACKUP_KEY);
+      if(!raw) return;
+      const saved=JSON.parse(raw);
+      if(!saved || !saved.state || typeof saved.state!=="object") return;
+      this.state={...this.state,...saved.state};
+      this.hasLocalChanges=false;
+      this.ensureTeamData();
+      this.refreshTeamSelectors();
+      this.renderBench();
+      this.render(false);
+      this.renderLeaguePage();
+      this.setStatus("Firebase: loading saved local view...","");
+    }catch(e){ console.error("Match backup load failed",e); }
+  },
+  persistMatchBackup(){
+    try{
+      const copy=JSON.parse(JSON.stringify(this.state||{}));
+      delete copy.history;
+      delete copy.ballHistory;
+      delete copy.ballEvents;
+      localStorage.setItem(MATCH_BACKUP_KEY,JSON.stringify({state:copy,timestamp:Date.now()}));
+    }catch(e){ console.warn("Match backup failed",e); }
+  },
   async saveTeamCatalog(){
     try{
       const teams=this.state.teams||{};
@@ -700,6 +726,8 @@ window.app = {
       }
 
       const remote=snap.data() || {};
+      const firstHydrate=!this._remoteHydratedOnce;
+      this._remoteHydratedOnce=true;
       const remoteTeams=remote.teamCatalog || remote.teams || {};
       const remoteTeamInfo=remote.teamInfo || {};
       if(!this.hasTeamCatalog && remoteTeams && typeof remoteTeams==="object"){
@@ -713,11 +741,13 @@ window.app = {
       }
 
       if(remote.updatedBy===this.sessionId) return;
-      if(this.hasLocalChanges) return;
+      if(this.hasLocalChanges && !firstHydrate) return;
 
       const teams=this.hasTeamCatalog ? this.state.teams : (remoteTeams || this.state.teams);
       const teamInfo=this.hasTeamCatalog ? this.state.teamInfo : (remoteTeamInfo || this.state.teamInfo);
       this.state={...this.state,...remote,teams,teamInfo};
+      this.hasLocalChanges=false;
+      this.persistMatchBackup();
       this.restoreUndoBackup();
       this.ensureTeamData();
       this.refreshTeamSelectors();
@@ -867,10 +897,94 @@ window.app = {
   openPicker(title,list,opts={}){ return new Promise((resolve)=>{ const required=!!opts.required; const overlay=document.getElementById("pickerOverlay"), titleEl=document.getElementById("pickerTitle"), listEl=document.getElementById("pickerList"), cancelBtn=document.getElementById("pickerCancelBtn"), okBtn=document.getElementById("pickerOkBtn"), inputEl=document.getElementById("pickerManualInput"); titleEl.innerText=title; listEl.innerHTML=(list&&list.length)?list.map(v=>`<div class="picker-item" data-value="${v}"><span>${v}</span></div>`).join(""):'<div class="picker-item" style="cursor:default;color:#64748b"><span>No squad players yet. Type name below.</span></div>'; inputEl.value=""; cancelBtn.innerText=required?"Required":"Cancel"; const close=(val)=>{ if(required && !val){ this.showPopup("Select player first","warn"); inputEl.focus(); return; } overlay.classList.remove("show"); listEl.onclick=null; cancelBtn.onclick=null; okBtn.onclick=null; inputEl.onkeydown=null; cancelBtn.innerText="Cancel"; resolve(val||null); }; listEl.onclick=(e)=>{ const it=e.target.closest(".picker-item[data-value]"); if(it) close(it.getAttribute("data-value")); }; okBtn.onclick=()=>{ const manual=(inputEl.value||"").trim(); close(manual||null); }; inputEl.onkeydown=(e)=>{ if(e.key==="Enter"){ e.preventDefault(); okBtn.onclick(); } if(e.key==="Escape") close(null); }; cancelBtn.onclick=()=>close(null); overlay.classList.add("show"); inputEl.focus(); }); },
   ensurePlayerInTeam(team,name){ if(!team||!name) return; if(!this.state.teams[team]) this.state.teams[team]=[]; if(!this.state.teams[team].includes(name)){ this.state.teams[team].push(name); this.dirtyTeams.add(team); this.persistTeamBackup(); this.saveTeamCatalog(); } },
   async promptNextBowler(){ const previous=this.state.lastOverBowler || this.state.bowler?.name || ""; const bowlers=(this.state.teams[this.state.bowlingTeam]||[]).filter(Boolean).filter(p=>p!==previous); const picked=await this.openPicker(`Over complete. Select bowler (${this.state.bowlingTeam})`,bowlers,{required:true}); if(!picked) return; if(picked===previous){ this.showPopup("Same bowler cannot bowl consecutive overs.","warn"); return this.promptNextBowler(); } this.ensurePlayerInTeam(this.state.bowlingTeam,picked); this.state.bowler={name:picked,balls:0,m:0,r:0,w:0}; const bowlerEl=document.getElementById("bowlerNameInput"); if(bowlerEl) bowlerEl.value=picked; this.hasLocalChanges=true; this.render(); },
-  async promptNextBatsman(){ const dismissed=this.state.dismissedPlayers||[]; const bats=(this.state.teams[this.state.battingTeam]||[]).filter(Boolean).filter(p=>!dismissed.includes(p)); const picked=await this.openPicker(`Wicket fell. Select batsman (${this.state.battingTeam})`,bats,{required:true}); if(!picked) return; this.ensurePlayerInTeam(this.state.battingTeam,picked); if(this.state.striker===1) this.state.bat1={name:picked,r:0,b:0,f:0,s:0}; else this.state.bat2={name:picked,r:0,b:0,f:0,s:0}; this.hasLocalChanges=true; this.render(); },
+  async promptNextBatsman(){ const dismissed=this.state.dismissedPlayers||[]; const bats=(this.state.teams[this.state.battingTeam]||[]).filter(Boolean).filter(p=>!dismissed.includes(p)); const picked=await this.openPicker(`Wicket fell. Select batsman (${this.state.battingTeam})`,bats,{required:true}); if(!picked) return; this.ensurePlayerInTeam(this.state.battingTeam,picked); const slot=this._lastOutSlot || this.state.striker; if(slot===1) this.state.bat1={name:picked,r:0,b:0,f:0,s:0}; else this.state.bat2={name:picked,r:0,b:0,f:0,s:0}; this._lastOutSlot=null; this.hasLocalChanges=true; this.render(); },
   async promptInningOpeners(){ const battingTeam=this.state.battingTeam; const bowlingTeam=this.state.bowlingTeam; const bats=(this.state.teams[battingTeam]||[]).filter(Boolean); const striker=await this.openPicker(`Start new innings. Select striker (${battingTeam})`,bats,{required:true}); let nonStriker=""; while(!nonStriker || nonStriker===striker){ nonStriker=await this.openPicker(`Select non-striker (${battingTeam})`, bats.filter(p=>p!==striker),{required:true}); if(nonStriker===striker){ this.showPopup("Striker and Non-Striker cannot be same","warn"); nonStriker=""; } } this.ensurePlayerInTeam(battingTeam,striker); this.ensurePlayerInTeam(battingTeam,nonStriker); this.state.bat1={name:striker,r:0,b:0,f:0,s:0}; this.state.bat2={name:nonStriker,r:0,b:0,f:0,s:0}; const bowlers=(this.state.teams[bowlingTeam]||[]).filter(Boolean); const bowler=await this.openPicker(`Select opening bowler (${bowlingTeam})`, bowlers,{required:true}); this.ensurePlayerInTeam(bowlingTeam,bowler); this.state.bowler={name:bowler,balls:0,m:0,r:0,w:0}; this.hasLocalChanges=true; this.render(); },
   needsPlayersSelected(){ return !this.state.bat1?.name || this.state.bat1.name==="-" || !this.state.bat2?.name || this.state.bat2.name==="-" || !this.state.bowler?.name || this.state.bowler.name==="-"; },
-  setWicketType(type){ this.state.wicketType=type; document.getElementById("wicketTypeHint").innerText=type||"none"; },
+  setWicketType(type, helper="", outBatsman=""){
+    this.state.wicketType=type;
+    this.state.wicketHelper=helper;
+    this.state.wicketOutBatsman=outBatsman;
+    const hint = type ? `${type}${helper ? ` - ${helper}` : ""}` : "none";
+    const el=document.getElementById("wicketTypeHint");
+    if(el) el.innerText=hint;
+  },
+  wicketTypeText(){
+    const type=this.state.wicketType||"";
+    const helper=(this.state.wicketHelper||"").trim();
+    if(!type) return "";
+    if(type==="Bowled" || type==="LBW") return type;
+    if(!helper) return type;
+    if(type==="Caught") return `${type} by ${helper}`;
+    if(type==="Run Out") return `${type} by ${helper}`;
+    if(type==="Stumping") return `${type} by ${helper}`;
+    return `${type} - ${helper}`;
+  },
+  handleWicketToggle(el){
+    if(el?.checked) this.openWicketModal();
+    else this.setWicketType("");
+  },
+  openWicketModal(){
+    const overlay=document.getElementById("wicketOverlay");
+    const input=document.getElementById("wicketHelperName");
+    const list=document.getElementById("wicketHelperPlayers");
+    const outSelect=document.getElementById("wicketOutBatsman");
+    if(list){
+      const names=(this.state.teams?.[this.state.bowlingTeam]||[]).filter(Boolean);
+      list.innerHTML=names.map(n=>`<option value="${this.safeText(n)}"></option>`).join("");
+    }
+    if(input) input.value=this.state.wicketHelper||"";
+    if(outSelect){
+      const strikerName=this.state.striker===1 ? (this.state.bat1?.name||"-") : (this.state.bat2?.name||"-");
+      const nonStrikerName=this.state.striker===1 ? (this.state.bat2?.name||"-") : (this.state.bat1?.name||"-");
+      outSelect.innerHTML=`<option value="${this.safeText(strikerName)}">Striker - ${this.safeText(strikerName)}</option><option value="${this.safeText(nonStrikerName)}">Non-striker - ${this.safeText(nonStrikerName)}</option>`;
+      outSelect.value=this.state.wicketOutBatsman || strikerName;
+    }
+    this.selectWicketModalType(this.state.wicketType || "Bowled");
+    overlay?.classList.add("show");
+    setTimeout(()=>input?.focus(),50);
+  },
+  selectWicketModalType(type){
+    this._pendingWicketType=type;
+    document.querySelectorAll(".wicket-type-btn").forEach(btn=>btn.classList.toggle("active",btn.dataset.type===type));
+    const label=document.getElementById("wicketHelperLabel");
+    const input=document.getElementById("wicketHelperName");
+    const outLabel=document.getElementById("wicketOutLabel");
+    const outSelect=document.getElementById("wicketOutBatsman");
+    if(label){
+      const text = type==="Caught" ? "Catch kisne liya? optional"
+        : type==="Run Out" ? "Throw/run out kisne kiya? optional"
+        : type==="Stumping" ? "Stumping kisne ki? optional"
+        : "Is wicket type me name nahi lagega";
+      label.innerText=text;
+    }
+    if(input){
+      const needsName = type==="Caught" || type==="Run Out" || type==="Stumping";
+      input.disabled = !needsName;
+      input.placeholder = needsName ? "Optional name" : "Name not required";
+      if(!needsName) input.value = "";
+    }
+    if(outLabel) outLabel.style.display = type==="Run Out" ? "" : "none";
+    if(outSelect){
+      outSelect.style.display = type==="Run Out" ? "" : "none";
+      outSelect.disabled = type!=="Run Out";
+    }
+  },
+  applyWicketModal(){
+    const needsName = this._pendingWicketType==="Caught" || this._pendingWicketType==="Run Out" || this._pendingWicketType==="Stumping";
+    const helper=needsName ? (document.getElementById("wicketHelperName")?.value||"").trim() : "";
+    const outBatsman=this._pendingWicketType==="Run Out" ? (document.getElementById("wicketOutBatsman")?.value||"").trim() : "";
+    this.setWicketType(this._pendingWicketType || "Bowled", helper, outBatsman);
+    const wicket=document.getElementById("wicket");
+    if(wicket) wicket.checked=true;
+    document.getElementById("wicketOverlay")?.classList.remove("show");
+  },
+  cancelWicketModal(){
+    if(!this.state.wicketType){
+      const wicket=document.getElementById("wicket");
+      if(wicket) wicket.checked=false;
+    }
+    document.getElementById("wicketOverlay")?.classList.remove("show");
+  },
   pushHighlight(text,type="auto"){ this.state.highlights.unshift({text,type,time:new Date().toLocaleTimeString()}); if(this.state.highlights.length>20) this.state.highlights=this.state.highlights.slice(0,20); },
   ballCommentaryText({ballNo,label,run,wide,noball,byes,legbyes,wicket,batter,bowler}){
     if(wicket) return `${ballNo}: ${bowler} to ${batter}, wicket! ${label}`;
@@ -997,6 +1111,7 @@ window.app = {
     this.state.bat2={name:openingNonStriker,r:0,b:0,f:0,s:0};
     this.state.bowler={name:openingBowler,balls:0,m:0,r:0,w:0};
     this.hasLocalChanges=true;
+    this.persistMatchBackup();
     this.refreshTeamSelectors();
     this.renderBench();
     this.updateMatchPreview();
@@ -1136,6 +1251,13 @@ window.app = {
       ...JSON.parse(JSON.stringify(this.state)),
       id:Date.now(),
       title:this.state.matchTitle||`${this.state.battingTeam} vs ${this.state.bowlingTeam}`,
+      battingTeam:this.state.battingTeam,
+      bowlingTeam:this.state.bowlingTeam,
+      teamA:this.state.bowlingTeam,
+      teamB:this.state.battingTeam,
+      inningNumber:this.state.inningNumber||2,
+      liveStarted:false,
+      matchFinished:true,
       winnerText:this.state.winnerText||"Result pending",
       tossText:this.state.tossText||"-",
       firstInnings:`${Number(this.state.firstInningsScore||0)}/${Number(this.state.firstInningsWkts||0)}`,
@@ -1224,10 +1346,28 @@ window.app = {
     this.render();
     this.showPopup("Super Over started","success");
   },
-  async completeMatch(){
-    if(!this.state.winnerText){
-      return this.showPopup("Result is not ready yet.","warn");
+  deriveWinnerText(){
+    if(this.state.winnerText) return this.state.winnerText;
+    if((this.state.inningNumber||1) <= 1 || !this.state.target) return "";
+    const target=Number(this.state.target||0);
+    const runs=Number(this.state.runs||0);
+    if(runs>=target){
+      const wktsLeft=Math.max(10-Number(this.state.wkts||0),0);
+      const maxBalls=(Number(this.state.totalOvers)||20)*6;
+      const ballsLeft=Math.max(maxBalls-Number(this.state.balls||0),0);
+      return `${this.state.battingTeam} won by ${wktsLeft} wickets (${ballsLeft} balls left)`;
     }
+    const margin=target-runs-1;
+    if(margin===0) return "Match Tied";
+    return `${this.state.bowlingTeam} won by ${Math.max(margin,0)} runs`;
+  },
+  async completeMatch(){
+    const derivedWinner=this.deriveWinnerText();
+    if(!derivedWinner){
+      return this.showPopup("Complete se pehle 2nd innings / target hona chahiye.","warn");
+    }
+    if(!this.state.matchFinished && !confirm(`Complete match?\n${derivedWinner}`)) return;
+    this.state.winnerText=derivedWinner;
     this.state.matchFinished=true;
     this.state.liveStarted=false;
     this.state.scoringLocked=true;
@@ -1240,7 +1380,7 @@ window.app = {
     await this.saveToFirebase(true);
     this.showPopup("Match completed and published","success");
   },
-  handleShortcuts(e){ const t=e.target?.tagName?.toLowerCase(); if(["input","textarea","select"].includes(t)) return; const k=e.key.toLowerCase(); if(["0","1","2","3","4","5","6"].includes(k)) return this.addBall(parseInt(k,10)); if(k==="w") document.getElementById("wicket").checked=!document.getElementById("wicket").checked; if(k==="n") document.getElementById("noball").checked=!document.getElementById("noball").checked; if(k==="d") document.getElementById("wide").checked=!document.getElementById("wide").checked; },
+  handleShortcuts(e){ const t=e.target?.tagName?.toLowerCase(); if(["input","textarea","select"].includes(t)) return; const k=e.key.toLowerCase(); if(["0","1","2","3","4","5","6"].includes(k)) return this.addBall(parseInt(k,10)); if(k==="w"){ const el=document.getElementById("wicket"); if(el){ el.checked=!el.checked; this.handleWicketToggle(el); } } if(k==="n") document.getElementById("noball").checked=!document.getElementById("noball").checked; if(k==="d") document.getElementById("wide").checked=!document.getElementById("wide").checked; },
   applyPlayerNames(){ const strikerEl=document.getElementById("strikerName"), nonStrikerEl=document.getElementById("nonStrikerName"), bowlerEl=document.getElementById("bowlerNameInput"); if(!strikerEl||!nonStrikerEl||!bowlerEl) return; this.hasLocalChanges=true; const s=strikerEl.value, ns=nonStrikerEl.value, b=bowlerEl.value; if(s && ns && s===ns){ this.showPopup("Striker and Non-Striker cannot be same.","warn"); this.refreshPlayerDeskSelectors(); return; } if(s) this.state.bat1.name=s; if(ns) this.state.bat2.name=ns; if(b && b===this.state.lastOverBowler && (this.state.balls%6===0) && this.state.balls>0){ this.showPopup("Same bowler cannot bowl consecutive overs.","warn"); this.refreshPlayerDeskSelectors(); return; } if(b) this.state.bowler.name=b; this.render(); this.hidePlayerDesk(); },
   hidePlayerDesk(){ const p=document.getElementById("playerDeskPanel"), s=document.getElementById("playerDeskShowPanel"); if(p&&s){ p.style.display="none"; s.style.display="block"; } },
   showPlayerDesk(){ const p=document.getElementById("playerDeskPanel"), s=document.getElementById("playerDeskShowPanel"); if(p&&s){ p.style.display="block"; s.style.display="none"; } },
@@ -1253,8 +1393,13 @@ window.app = {
       if(this.needsPlayersSelected()) return;
     }
     if(run==="custom"){ const c=prompt("Enter custom runs:"); if(c&&!isNaN(c)) run=parseInt(c,10); else return; }
+    const wicketChecked=!!document.getElementById("wicket")?.checked || !!this.state.wicketType;
+    if(wicketChecked && !this.state.wicketType){
+      this.openWicketModal();
+      return;
+    }
     const ballBackup=this.saveBallHistory();
-    const wide=!!document.getElementById("wide")?.checked, noball=!!document.getElementById("noball")?.checked, byes=!!document.getElementById("byes")?.checked, legbyes=!!document.getElementById("legbyes")?.checked, wicket=!!document.getElementById("wicket")?.checked || !!this.state.wicketType;
+    const wide=!!document.getElementById("wide")?.checked, noball=!!document.getElementById("noball")?.checked, byes=!!document.getElementById("byes")?.checked, legbyes=!!document.getElementById("legbyes")?.checked, wicket=wicketChecked;
     const legal=!(wide||noball); let extra=0,label="";
     if(wide){extra=1;label=run>0?(run+1)+"Wd":"Wd";} else if(noball){extra=1;label=run>0?(run+1)+"Nb":"Nb";} else if(byes){label=run+"B";} else if(legbyes){label=run>0?`LB+${run}`:"LB";} else label=String(run);
     const total=run+extra;
@@ -1262,28 +1407,33 @@ window.app = {
     this.state.runs+=total; this.state.bowler.r+=bowlerChargedRuns; this.state.partnershipRuns+=total;
     if(wide||noball) this.state.extras+=total; else if(byes||legbyes) this.state.extras+=run;
     const currentBowlerName = this.state.bowler?.name || "-";
-    if(!this.state.bowlerStats[currentBowlerName]) this.state.bowlerStats[currentBowlerName] = { balls:0, runs:0, wkts:0 };
+    if(!this.state.bowlerStats[currentBowlerName]) this.state.bowlerStats[currentBowlerName] = { balls:0, runs:0, wkts:0, dots:0 };
     this.state.bowlerStats[currentBowlerName].runs += bowlerChargedRuns;
     if(legal){
       this.state.balls++; this.state.bowler.balls++; this.state.partnershipBalls++;
       this.state.bowlerStats[currentBowlerName].balls += 1;
+      if(run === 0 && !byes && !legbyes) this.state.bowlerStats[currentBowlerName].dots = Number(this.state.bowlerStats[currentBowlerName].dots || 0) + 1;
       const bat=this.state.striker===1?this.state.bat1:this.state.bat2; bat.b++;
       if(!byes&&!legbyes){ bat.r+=run; if(run===4) bat.f++; if(run===6) bat.s++; }
     }
     if(wicket){
-      const outBatsman = this.state.striker===1 ? (this.state.bat1?.name||"") : (this.state.bat2?.name||"");
+      const runOutOutName = /run\s*out/i.test(this.state.wicketType||"") ? (this.state.wicketOutBatsman||"").trim() : "";
+      const outSlot = runOutOutName && this.state.bat2?.name===runOutOutName ? 2 : (runOutOutName && this.state.bat1?.name===runOutOutName ? 1 : this.state.striker);
+      const outBatsman = outSlot===1 ? (this.state.bat1?.name||"") : (this.state.bat2?.name||"");
+      this._lastOutSlot=outSlot;
       if(outBatsman && outBatsman!=="-" && !(this.state.dismissedPlayers||[]).includes(outBatsman)){
         this.state.dismissedPlayers.push(outBatsman);
-        const batsman = this.state.striker===1 ? this.state.bat1 : this.state.bat2;
+        const batsman = outSlot===1 ? this.state.bat1 : this.state.bat2;
         if(!Array.isArray(this.state.battingScorecard)) this.state.battingScorecard = [];
         this.upsertBattingRow(this.state.battingScorecard,{...batsman, out: true, retired:false});
       }
-      const isBowlerWicket=!/run\s*out/i.test(this.state.wicketType||"");
-      this.state.wkts++; if(isBowlerWicket) this.state.bowler.w++; const t=this.state.wicketType?` (${this.state.wicketType})`:""; label=(run>0?`W${run}`:"W") + t;
+      const wicketText=this.wicketTypeText();
+      const isBowlerWicket=!/run\s*out/i.test(wicketText||"");
+      this.state.wkts++; if(isBowlerWicket) this.state.bowler.w++; const t=wicketText?` (${wicketText})`:""; label=(run>0?`W${run}`:"W") + t;
       if(isBowlerWicket) this.state.bowlerStats[currentBowlerName].wkts += 1;
-      this.state.lastWicket=`${this.state.runs}/${this.state.wkts}`; this.pushHighlight(`Wicket! ${this.state.lastWicket}${t}`,"wicket");
-      this.state.fallOfWickets.push(`${this.state.runs}/${this.state.wkts} (${this.overText(this.state.balls)})`);
-      this.state.partnershipRuns=0; this.state.partnershipBalls=0; this.state.wicketType=""; document.getElementById("wicketTypeHint").innerText="none";
+      this.state.lastWicket=`${this.state.runs}/${this.state.wkts}${t}`; this.pushHighlight(`Wicket! ${this.state.lastWicket}`,"wicket");
+      this.state.fallOfWickets.push(`${this.state.runs}/${this.state.wkts} (${this.overText(this.state.balls)})${t}`);
+      this.state.partnershipRuns=0; this.state.partnershipBalls=0; this.setWicketType("");
     }
     this.state.over.push(label);
     const ballNo=this.overText(this.state.balls);
@@ -1458,7 +1608,7 @@ window.app = {
     this.render();
   },
   saveHistory(){ this.hasLocalChanges=true; this.state.history.push(JSON.parse(JSON.stringify(this.state))); if(this.state.history.length>60) this.state.history.shift(); },
-  clearChecks(){ ["wide","noball","byes","legbyes","wicket"].forEach(id=>{ const el=document.getElementById(id); if(el) el.checked=false; }); },
+  clearChecks(){ ["wide","noball","byes","legbyes","wicket"].forEach(id=>{ const el=document.getElementById(id); if(el) el.checked=false; }); this.setWicketType(""); },
   overText(b){ b=Number(b||0); return Math.floor(b/6)+"."+(b%6); },
   inningText(n){ if(n===1)return"1st"; if(n===2)return"2nd"; if(n===3)return"3rd"; return n+"th"; },
   updateResultPanel(){
@@ -1497,6 +1647,7 @@ window.app = {
       delete data.history;
       delete data.ballHistory;
       delete data.ballEvents;
+      this.persistMatchBackup();
       await setDoc(doc(db,"matches",MATCH_ID),data);
       this.lastSync=data.timestamp;
       this.hasLocalChanges=false;

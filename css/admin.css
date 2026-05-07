@@ -74,6 +74,13 @@
     .picker-item:hover{background:#f0fdfa}
     .picker-manual{margin-top:12px}
     .picker-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+    .wicket-overlay{position:fixed;inset:0;background:rgba(2,6,23,.62);display:none;align-items:center;justify-content:center;z-index:11000;padding:14px}
+    .wicket-overlay.show{display:flex}
+    .wicket-modal{width:min(520px,96vw);background:#fff;border-radius:10px;box-shadow:0 24px 56px rgba(0,0,0,.35);padding:16px;border:1px solid #dfe7ef}
+    .wicket-type-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
+    .wicket-type-btn{border:1px solid #d1dbe8;background:#fff;color:#334155;border-radius:8px;padding:12px 8px;font-weight:900;cursor:pointer}
+    .wicket-type-btn.active{background:#dc2626;border-color:#dc2626;color:#fff}
+    #wicketOutBatsman{width:100%;margin:6px 0 10px}
     .teams-grid{grid-template-columns:340px 1fr}
     .league-grid{grid-template-columns:380px 1fr}
     .league-team-picker{min-height:210px}
@@ -119,6 +126,11 @@
     .share-details .qr-box{margin:0;border:0;border-top:1px solid #dfe7ef;border-radius:0;background:#fff}
     .live-control-panel h3,.ball-control-panel h3{display:flex;align-items:center;justify-content:space-between}
     .section-kicker{font-size:11px;color:#64748b;text-transform:uppercase;font-weight:800}
+    .admin-main-column{display:flex;flex-direction:column}
+    .admin-main-column>.panel{order:3}
+    .admin-main-column>.ball-control-panel{order:1}
+    .admin-main-column>.live-control-panel{order:2}
+    .batter-actions{grid-template-columns:1fr 1fr;margin-top:8px}
     .ball-edit-row{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:1px solid #edf2f7;padding:8px 0;font-size:13px}
     .ball-edit-row:last-child{border-bottom:0}
     .ball-edit-row b{color:#10243d}
@@ -137,6 +149,8 @@
     .panel h3{font-size:14px;letter-spacing:.01em}
     .live-control-panel{background:#fbfdff;border-color:#cfdbe8}
     .ball-control-panel{border-color:#bdd7d2;background:#f8fffd}
+    .score-top-panel{padding:0;overflow:hidden;border-color:#111827}
+    .score-top-panel .score{border-radius:0;border:0}
     .score{background:#111827;color:#fff;border:0;border-radius:10px}
     .score b{color:#fff;font-size:52px;letter-spacing:.02em}
     .score .muted{color:#cbd5e1}
@@ -162,5 +176,102 @@
     .result-panel{border-radius:10px}
     .league-schedule-item{box-shadow:none}
     @media (max-width:900px){.page-tabs{top:auto}.home-grid{grid-template-columns:1fr}.wrap{padding:8px}.score b{font-size:40px}.control-main{grid-template-columns:1fr}.lock-panel{grid-template-columns:repeat(2,1fr)}}
-    @media (max-width:560px){.top{padding:9px}.title{font-size:15px}.page-tabs{margin:0;overflow-x:auto}.page-tab{font-size:12px;padding:8px 10px}.panel{padding:9px;border-radius:9px}.score{padding:10px}.score b{font-size:34px}.live-buttons{grid-template-columns:repeat(3,1fr)}.live-btn{font-size:11px}.lock-panel{display:flex;overflow-x:auto}.lock-panel .btn{flex:0 0 auto}.ball-control-panel .options{border:0;background:transparent;padding:0}.runs{grid-template-columns:repeat(4,1fr);gap:6px}.run{min-height:42px;font-size:17px}.metric-grid{grid-template-columns:repeat(2,1fr)}.section-kicker{display:none}}
+    @media (max-width:560px){.top{padding:9px}.title{font-size:15px}.page-tabs{margin:0;overflow-x:auto}.page-tab{font-size:12px;padding:8px 10px}.panel{padding:9px;border-radius:9px}.score{padding:10px}.score b{font-size:34px}.live-buttons{grid-template-columns:repeat(3,1fr)}.live-btn{font-size:11px}.lock-panel{display:flex;overflow-x:auto}.lock-panel .btn{flex:0 0 auto}.ball-control-panel .options{border:0;background:transparent;padding:0}.runs{grid-template-columns:repeat(4,1fr);gap:6px}.run{min-height:42px;font-size:17px}.metric-grid{grid-template-columns:repeat(2,1fr)}.section-kicker{display:none}.wicket-overlay{align-items:flex-end;padding:0}.wicket-modal{width:100%;border-radius:12px 12px 0 0;padding:14px}.wicket-type-grid{grid-template-columns:1fr 1fr;gap:7px}.wicket-type-btn{padding:11px 6px;font-size:12px}.wicket-modal .picker-actions{display:grid;grid-template-columns:1fr 1fr}}
+
+    /* Final mobile stability pass */
+    @media (max-width:640px){
+      html,body{width:100%;max-width:100%;overflow-x:hidden}
+      .top{position:relative;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start}
+      .top .save-status{grid-column:1 / -1;justify-self:start;max-width:100%;white-space:normal}
+      .title,.sub{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      .page-tabs{position:relative;top:auto;width:100%;max-width:100%;padding:7px 8px;margin:0;overflow-x:auto}
+      .page-tabs::-webkit-scrollbar{display:none}
+      .page-tab{flex:0 0 auto;min-height:34px}
+      .wrap{width:100%;padding:8px}
+      .home-grid,.setup-grid,.teams-grid,.league-grid{display:grid!important;grid-template-columns:1fr!important;gap:8px}
+      .panel{width:100%;min-width:0;overflow:hidden}
+      .score-top-panel{padding:0}
+      .score{grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:10px}
+      .score b{font-size:32px!important;line-height:1}
+      .crr{min-width:66px}.crr .v{font-size:18px!important}
+      .control-main{grid-template-columns:1fr;gap:8px}
+      .control-head{display:grid;gap:4px}
+      .live-buttons{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+      .live-btn{min-width:0;padding:9px 4px;font-size:11px}
+      .lock-panel{display:grid;grid-template-columns:1fr 1fr;gap:6px;overflow:visible}
+      .lock-panel .btn{min-width:0;white-space:normal}
+      .ball-control-panel .options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;overflow:visible}
+      .ball-control-panel .opt{min-width:0;justify-content:center;padding:7px 5px;font-size:11px;white-space:nowrap}
+      .ball-control-panel .actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:6px;overflow:visible}
+      .ball-control-panel .actions .btn{min-width:0;flex:auto;white-space:normal}
+      .runs{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+      .run{min-height:44px;font-size:18px}
+      .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+      .metric{min-width:0}.metric .value{font-size:14px;overflow-wrap:anywhere}
+      table{display:block;width:100%;overflow-x:auto;font-size:11px;white-space:nowrap}
+      th,td{padding:6px 5px}
+      .list{max-height:150px}
+      #resultPanel .actions{display:grid!important;grid-template-columns:1fr!important}
+      .result-modal{padding:16px}.result-modal-grid{grid-template-columns:1fr}
+      .result-modal .actions{display:grid!important;grid-template-columns:1fr 1fr!important}
+      .wicket-overlay{align-items:flex-end;padding:0}
+      .wicket-modal{width:100%;max-height:88vh;overflow:auto;border-radius:12px 12px 0 0;padding:14px}
+      .wicket-type-grid{grid-template-columns:1fr 1fr;gap:7px}
+      .wicket-type-btn{min-height:42px;padding:10px 6px;font-size:12px}
+      .wicket-modal input{font-size:16px}
+      .wicket-modal .picker-actions{display:grid;grid-template-columns:1fr 1fr}
+      .grid2,.grid4,.match-teams,.match-meta,.creator-actions{grid-template-columns:1fr!important}
+      .history-item{display:grid;gap:7px;align-items:start}
+    }
+
+    .snapshot-panel .snapshot-table{
+      width:100%;
+      table-layout:fixed;
+    }
+    .snapshot-panel th:first-child,
+    .snapshot-panel td:first-child{
+      width:36%;
+      max-width:36%;
+      word-break:break-word;
+    }
+    .snapshot-panel .bowler-snapshot th:first-child,
+    .snapshot-panel .bowler-snapshot td:first-child{
+      width:44%;
+      max-width:44%;
+    }
+    @media (max-width:640px){
+      .snapshot-panel{padding:8px}
+      .snapshot-panel h3{font-size:12px;margin-bottom:6px}
+      .snapshot-panel .snapshot-table{
+        display:table!important;
+        overflow:visible!important;
+        white-space:normal!important;
+        table-layout:fixed;
+        width:100%;
+        font-size:10px;
+        margin-top:6px;
+      }
+      .snapshot-panel th,
+      .snapshot-panel td{
+        padding:5px 2px;
+        line-height:1.15;
+        text-align:center;
+      }
+      .snapshot-panel th:first-child,
+      .snapshot-panel td:first-child{
+        width:34%;
+        max-width:34%;
+        text-align:left;
+        overflow-wrap:anywhere;
+      }
+      .snapshot-panel th:not(:first-child),
+      .snapshot-panel td:not(:first-child){
+        width:11%;
+      }
+      .snapshot-panel .bowler-snapshot th:first-child,
+      .snapshot-panel .bowler-snapshot td:first-child{
+        width:42%;
+        max-width:42%;
+      }
+    }
 

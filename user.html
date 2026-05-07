@@ -190,6 +190,13 @@
   </div>
 </div>
 
+<div class="match-modal" id="matchDetailModal" onclick="app.closeMatchModal(event)" aria-hidden="true">
+  <div class="match-modal-card" role="dialog" aria-modal="true" aria-labelledby="matchModalTitle" onclick="event.stopPropagation()">
+    <button class="match-modal-close" type="button" onclick="app.closeMatchModal()" aria-label="Close">x</button>
+    <div id="matchModalBody"></div>
+  </div>
+</div>
+
 <script type="module" src="./js/user.js"></script>
 
 </body>
