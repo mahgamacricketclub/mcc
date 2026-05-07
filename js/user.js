@@ -1,23 +1,26 @@
-﻿﻿import { firestoreDb as db, doc, onSnapshot } from "./firebase-store.js";
-import { listenLiveMatch, trackViewer } from "./live-sync.js";
+import { listenLiveMatch, trackViewer, fetchLiveMatchRest } from "./firebase-live.js";
+import { listenMatchStore, getLegacyMatchStore } from "./firebase-store.js";
+import { mergeLiveAndStore } from "./live-sync.js";
+
 const params = new URLSearchParams(location.search);
 const MATCH_ID = (params.get("match") || "liveMatch1").trim();
 const USER_MATCH_BACKUP_KEY = `cricket_user_match_backup_${MATCH_ID}`;
 
 window.app = {
   state: {},
-  permanentState: {},
-  unsubscribeLive: null,
-  unsubscribePermanent: null,
   scorecardView: "teamA",
   matchesFilter: "all",
   selectedMatchIndex: undefined,
   selectedPlayer: null,
   renderQueued: false,
+  liveData: null,
+  storeData: null,
+  viewerId: (crypto && crypto.randomUUID) ? crypto.randomUUID() : ("viewer-" + Date.now() + "-" + Math.random().toString(16).slice(2)),
 
   init() {
-    this.showNoLive("Connecting to live match...");
+    this.cleanupLargeUserBackup();
     this.loadMatchBackup();
+    if(!this.hasUsableMatchData(this.state)) this.showNoLive("Connecting to live match...");
     document.addEventListener("keydown", (event) => {
       if(event.key === "Escape") this.closeMatchModal();
     });
@@ -35,6 +38,7 @@ window.app = {
     setText("logo2", "-");
     setText("tossText", "-");
     setText("liveInfo", message);
+    this.updateViewerCount(0);
     setHtml("battingInfo", '<span class="batter-line striker-line">- <span class="strike-mark">🏏</span></span><span class="batter-line">-</span>');
     setHtml("bowlingInfo", '-<br>Last: -<br>This Over: <span class="mini-over"><span class="ball-dot">-</span></span>');
     setHtml("allOverStrip", '<div class="over-row"><div class="bowler-line">Over: -</div><div class="mini-over"><span class="ball-dot">-</span></div></div>');
@@ -66,6 +70,7 @@ window.app = {
     }
     const mom = this.manOfMatch(matchData);
     setText("liveInfo", `${matchData.winnerText || "Latest match completed"}${mom ? ` · Man of the Match: ${mom.name}` : ""}`);
+    this.updateViewerCount(matchData.onlineViewers || 0);
     setHtml("battingInfo", '<span class="batter-line">No live match</span><span class="batter-line">Start next match from admin</span>');
     setHtml("bowlingInfo", `${this.safe(matchData.title || `${teamA} vs ${teamB}`)}<br>Completed`);
     setHtml("allOverStrip", '<div class="over-row"><div class="bowler-line">Latest result</div><div class="mini-over"><span class="ball-dot">OK</span></div></div>');
@@ -75,51 +80,54 @@ window.app = {
   },
 
   setupFirebase() {
-    // Firestore: permanent data like completed matches, league, points table, teams.
-    this.unsubscribePermanent = onSnapshot(doc(db, "matches", MATCH_ID), (snap) => {
-      if (snap.exists()) {
-        this.permanentState = snap.data() || {};
-        // Jab live RTDB data available nahi ho, tab permanent Firestore fallback use hota hai.
-        if(!this.state || !this.state.liveStarted){
-          this.state = { ...(this.state || {}), ...this.permanentState };
-          this.persistMatchBackup();
-          this.scheduleRender();
-        }
-      } else if(!this.state || Object.keys(this.state).length === 0) {
-        this.showNoLive("No live match created yet");
+    const publishMergedState = () => {
+      const hasLive=this.hasUsableMatchData(this.liveData);
+      const hasStore=this.hasUsableMatchData(this.storeData);
+      const viewerOnly=this.liveData && Object.keys(this.liveData).every(k=>["onlineViewers","viewers","updatedAt"].includes(k));
+      if(!hasLive && !hasStore && !this.hasUsableMatchData(this.state)) return;
+      if(viewerOnly && this.hasUsableMatchData(this.state)){
+        this.state={...this.state,onlineViewers:this.liveData.onlineViewers || 0};
+      } else {
+        this.state = mergeLiveAndStore(hasLive ? this.liveData : null, hasStore ? this.storeData : null, this.state);
       }
+      this.persistMatchBackup();
+      this.scheduleRender();
+    };
+
+    // Firestore carries durable context: teams, players, completed matches, league, points table, stats.
+    listenMatchStore(MATCH_ID, async (store) => {
+      const fallback = store ? null : await getLegacyMatchStore(MATCH_ID).catch(()=>null);
+      const nextStore = store || fallback;
+      if(this.hasUsableMatchData(nextStore)) this.storeData = nextStore;
+      publishMergedState();
     }, (error) => {
       console.error("Firestore Error:", error);
-      if(!this.state || Object.keys(this.state).length === 0) this.showNoLive("Unable to connect to match history");
+      if(this.state && Object.keys(this.state).length) this.scheduleRender();
+      else this.showNoLive("Offline: showing cached data when available");
     });
 
-    // Realtime Database: ultra-fast live score, commentary, over timeline.
-    this.unsubscribeLive = listenLiveMatch(MATCH_ID, (liveData) => {
-      if(liveData && liveData.liveStarted && !liveData.matchFinished){
-        this.state = { ...(this.permanentState || {}), ...liveData };
-        this.persistMatchBackup();
-        this.scheduleRender();
-        return;
-      }
-      // Live match remove ho chuka hai, completed history Firestore se dikhao.
-      if(this.permanentState && Object.keys(this.permanentState).length){
-        this.state = this.permanentState;
-        this.persistMatchBackup();
-        this.scheduleRender();
-      } else {
-        this.showNoLive("No live match created yet");
-      }
+    // Realtime Database carries the hot live score feed for instant mobile updates.
+    listenLiveMatch(MATCH_ID, (live) => {
+      if(live && typeof live==="object") this.liveData = live;
+      publishMergedState();
     }, (error) => {
       console.error("Realtime DB Error:", error);
-      if(this.permanentState && Object.keys(this.permanentState).length){
-        this.state = this.permanentState;
-        this.scheduleRender();
-      } else {
-        this.showNoLive("Unable to connect to live match");
-      }
+      if(this.state && Object.keys(this.state).length) this.scheduleRender();
+      else this.showNoLive("Unable to connect to live match");
     });
 
-    trackViewer(MATCH_ID);
+    trackViewer(MATCH_ID, this.viewerId, (count) => {
+      this.liveData = { ...(this.liveData || {}), onlineViewers: count };
+      publishMergedState();
+    });
+
+    // Safety fallback: if SDK listeners are slow after refresh, pull the RTDB live feed once.
+    fetchLiveMatchRest(MATCH_ID).then((live)=>{
+      if(live && typeof live==="object"){
+        this.liveData={...(this.liveData || {}),...live};
+        publishMergedState();
+      }
+    }).catch((error)=>console.warn("Realtime REST fallback skipped",error));
   },
   loadMatchBackup(){
     try{
@@ -128,13 +136,105 @@ window.app = {
       const saved=JSON.parse(raw);
       if(!saved || !saved.state || typeof saved.state!=="object") return;
       this.state=saved.state;
+      this.storeData=saved.state;
+      this.liveData=saved.state;
       this.scheduleRender();
     }catch(e){ console.warn("User match backup load failed",e); }
   },
+  cleanupLargeUserBackup(){
+    try{
+      const raw=localStorage.getItem(USER_MATCH_BACKUP_KEY);
+      if(raw && raw.length>700000) localStorage.removeItem(USER_MATCH_BACKUP_KEY);
+    }catch(e){}
+  },
+  hasUsableMatchData(data){
+    if(!data || typeof data!=="object") return false;
+    return !!(
+      data.liveStarted ||
+      data.matchFinished ||
+      data.matchTitle ||
+      data.battingTeam ||
+      data.bowlingTeam ||
+      Number(data.runs||0)>0 ||
+      Number(data.balls||0)>0 ||
+      (Array.isArray(data.completedMatches) && data.completedMatches.length)
+    );
+  },
   persistMatchBackup(){
     try{
-      localStorage.setItem(USER_MATCH_BACKUP_KEY,JSON.stringify({state:this.state||{},timestamp:Date.now()}));
-    }catch(e){ console.warn("User match backup failed",e); }
+      const now=Date.now();
+      if(this._lastUserBackupAt && now-this._lastUserBackupAt<1500) return;
+      this._lastUserBackupAt=now;
+      localStorage.setItem(USER_MATCH_BACKUP_KEY,JSON.stringify({state:this.compactMatchBackup(this.state),timestamp:now}));
+    }catch(e){
+      try{
+        const fallback=this.compactMatchBackup(this.state,true);
+        localStorage.setItem(USER_MATCH_BACKUP_KEY,JSON.stringify({state:fallback,timestamp:Date.now()}));
+      }catch(_){
+        try{ localStorage.removeItem(USER_MATCH_BACKUP_KEY); }catch(__){}
+        console.warn("User match backup skipped: browser storage quota full");
+      }
+    }
+  },
+  compactMatchBackup(state, tiny=false){
+    const s=state && typeof state==="object" ? state : {};
+    const compactCompleted=(Array.isArray(s.completedMatches)?s.completedMatches:[]).slice(0,tiny?3:10).map(m=>({
+      id:m.id,title:m.title||m.matchTitle||"Match",matchTitle:m.matchTitle||m.title||"Match",
+      battingTeam:m.battingTeam||"",bowlingTeam:m.bowlingTeam||"",teamA:m.teamA||"",teamB:m.teamB||"",
+      winnerText:m.winnerText||"",firstInnings:m.firstInnings||"",secondInnings:m.secondInnings||"",
+      playedAt:m.playedAt||"",inningsDetails:m.inningsDetails||null,completedInnings:m.completedInnings||{},
+      completedBowling:m.completedBowling||{},battingScorecard:m.battingScorecard||[],bowlerStats:m.bowlerStats||{}
+    }));
+    return {
+      matchId:MATCH_ID,
+      matchTitle:s.matchTitle||"",
+      liveStarted:!!s.liveStarted,
+      matchFinished:!!s.matchFinished,
+      battingTeam:s.battingTeam||"",
+      bowlingTeam:s.bowlingTeam||"",
+      tossText:s.tossText||"",
+      inningNumber:s.inningNumber||1,
+      totalOvers:s.totalOvers||20,
+      runs:Number(s.runs||0),
+      wkts:Number(s.wkts||s.wickets||0),
+      wickets:Number(s.wkts||s.wickets||0),
+      balls:Number(s.balls||0),
+      overs:s.overs||this.overText(s.balls||0),
+      extras:Number(s.extras||0),
+      striker:s.striker||1,
+      bat1:s.bat1||{name:"-",r:0,b:0,f:0,s:0},
+      bat2:s.bat2||{name:"-",r:0,b:0,f:0,s:0},
+      bowler:s.bowler||{name:"-",balls:0,r:0,w:0},
+      bowlerStats:s.bowlerStats||{},
+      over:Array.isArray(s.over)?s.over.slice(-8):[],
+      overSummary:Array.isArray(s.overSummary)?s.overSummary.slice(0,tiny?8:24):[],
+      commentary:Array.isArray(s.commentary)?s.commentary.slice(0,tiny?12:40):[],
+      highlights:Array.isArray(s.highlights)?s.highlights.slice(0,tiny?8:20):[],
+      fallOfWickets:Array.isArray(s.fallOfWickets)?s.fallOfWickets.slice(0,20):[],
+      lastWicket:s.lastWicket||"-",
+      lastOverBowler:s.lastOverBowler||"-",
+      partnershipRuns:Number(s.partnershipRuns||0),
+      partnershipBalls:Number(s.partnershipBalls||0),
+      firstInningsScore:s.firstInningsScore??null,
+      firstInningsWkts:s.firstInningsWkts??null,
+      target:s.target??null,
+      scoringLocked:!!s.scoringLocked,
+      liveControl:s.liveControl||{mode:"live",note:""},
+      liveStatus:s.liveStatus||"LIVE",
+      winnerText:s.winnerText||"",
+      teams:s.teams||{},
+      teamInfo:s.teamInfo||{},
+      league:s.league||{name:"",teams:[],overs:20,format:"single",playoffs:true,schedule:[]},
+      pointsTable:s.pointsTable||{},
+      tournamentStats:s.tournamentStats||{players:{}},
+      mvpLog:Array.isArray(s.mvpLog)?s.mvpLog.slice(0,10):[],
+      completedMatches:compactCompleted,
+      onlineViewers:Number(s.onlineViewers||0)
+    };
+  },
+  updateViewerCount(count){
+    const el=document.getElementById("viewerCountValue");
+    if(el) el.innerText=String(Math.max(0,Number(count||0)));
   },
   scheduleRender() {
     if(this.renderQueued) return;
@@ -323,7 +423,8 @@ window.app = {
     document.querySelectorAll(".matches-tab").forEach(tile => tile.classList.remove("active"));
     const filterIds = { all: "matchesFilterAll", live: "matchesFilterLive", complete: "matchesFilterComplete", pending: "matchesFilterPending" };
     document.getElementById(filterIds[this.matchesFilter] || filterIds.all)?.classList.add("active");
-    const liveMatch = (this.state.liveStarted && !this.state.matchFinished) ? `<div class="match-group-title">Live</div><div class="match-result-card"><div class="match-result-title">${this.safe(this.state.matchTitle || "Live Match")}</div><div class="match-result-meta">${this.safe(this.state.battingTeam || "-")} batting · ${Number(this.state.runs||0)}/${Number(this.state.wkts||0)} (${this.overText(this.state.balls||0)})</div></div>` : "";
+    const hasCurrentMatch = !!(!this.state.matchFinished && (this.state.liveStarted || this.state.matchTitle || this.state.battingTeam || this.state.bowlingTeam || Number(this.state.runs||0)>0 || Number(this.state.balls||0)>0));
+    const liveMatch = hasCurrentMatch ? `<div class="match-group-title">Live</div><div class="match-result-card"><div class="match-result-title">${this.safe(this.state.matchTitle || "Live Match")}</div><div class="match-result-meta">${this.safe(this.state.battingTeam || "-")} batting · ${Number(this.state.runs||0)}/${Number(this.state.wkts||0)} (${this.overText(this.state.balls||0)})</div></div>` : "";
     const upcoming = pendingMatches.slice(0, 10).map(m => `<div class="match-result-card"><div class="match-result-title">${this.safe(m.teamA)} vs ${this.safe(m.teamB)}</div><div class="match-result-meta">${this.safe(m.stage || "League")} · ${this.safe(m.round || "")}${m.date?`<br>${this.safe(m.date)} ${this.safe(m.time||"")}`:""}${m.venue?` · ${this.safe(m.venue)}`:""}</div></div>`).join("");
     const completed = history.map((x, i) => `<div class="match-result-card ${i===this.selectedMatchIndex?'active':''}" onclick="app.showMatchResult(${i})"><div class="match-result-title">${this.safe(x.title || "Match")}</div><div class="match-result-meta">${this.safe(x.leagueStage || ("Match " + (history.length - i)))} · ${this.safe(x.winnerText || "-")}<br>${this.safe(x.firstInnings || "-")} ${x.secondInnings ? " / " + this.safe(x.secondInnings) : ""}</div></div>`).join("");
     const blocks = {
@@ -613,6 +714,7 @@ window.app = {
     document.getElementById("liveInfo").innerText = matchData.matchFinished && matchData.winnerText
       ? `${matchData.winnerText}${matchMvp ? ` · Man of the Match: ${matchMvp.name}` : ""}`
       : `${tossPending ? `${batTeamShort} batting` : matchData.tossText} · CRR: ${crr}${target ? ` · Need ${need} from ${remBalls}` : ""}`;
+    this.updateViewerCount(matchData.onlineViewers || 0);
 
     document.getElementById("overviewScore").innerText = `${runs}/${wickets} (${overs})`;
     document.getElementById("overviewToss").innerText = matchData.tossText || "-";

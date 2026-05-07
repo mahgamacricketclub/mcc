@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBS Overlay Admin</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:#eef3f8;color:#102033}
+.top{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,#07111f,#123d57);color:#fff;padding:14px 18px;box-shadow:0 10px 24px rgba(15,23,42,.18)}
+.top h1{margin:0;font-size:20px}
+.top p{margin:4px 0 0;color:#cfe7f2;font-size:13px}
+.wrap{max-width:1180px;margin:0 auto;padding:16px;display:grid;grid-template-columns:360px 1fr;gap:16px}
+.panel{background:#fff;border:1px solid #dce7f1;border-radius:10px;padding:14px;box-shadow:0 10px 24px rgba(15,23,42,.06)}
+h2{font-size:15px;margin:0 0 12px;color:#123d57}
+label{display:block;font-size:12px;font-weight:900;color:#526176;margin:10px 0 5px;text-transform:uppercase}
+input,select,textarea{width:100%;border:1px solid #ccd9e4;border-radius:8px;padding:10px;font:inherit;background:#fff;color:#102033}
+input[type=color]{padding:3px;height:42px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.themes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.theme{border:1px solid #dbe5ef;border-radius:8px;padding:10px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;background:#f8fafc}
+.theme input{width:auto;margin-top:2px}
+.theme b{display:block;font-size:13px}
+.theme span{display:block;font-size:11px;color:#64748b;line-height:1.3;margin-top:2px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+button{border:0;border-radius:8px;padding:11px 12px;font-weight:1000;cursor:pointer;background:#123d57;color:#fff}
+button.secondary{background:#e7eef5;color:#123d57}
+button.good{background:#0f766e}
+button.warn{background:#b45309}
+.urlbox{font-family:ui-monospace,Consolas,monospace;font-size:12px;min-height:74px;resize:vertical}
+.preview{height:620px;background:#08111f;border-radius:10px;overflow:hidden;border:1px solid #0f172a}
+iframe{width:100%;height:100%;border:0;background:transparent}
+.hint{font-size:12px;color:#64748b;line-height:1.45}
+.status{font-size:12px;font-weight:900;color:#0f766e;margin-top:8px;min-height:18px}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}.preview{height:520px}.themes{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>OBS Overlay Admin</h1>
+  <p>Select karo kaunsa overlay OBS me show/hide karna hai, phir URL copy karke OBS Browser Source me paste karo.</p>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <h2>Match & Style</h2>
+    <div class="grid2">
+      <div><label>Match ID</label><input id="matchId" value="liveMatch1"></div>
+      <div><label>Mode</label><select id="mode"><option value="single">Single Theme</option><option value="custom">Custom Multi</option><option value="gallery">Gallery Preview</option></select></div>
+    </div>
+    <label>Single Theme</label>
+    <select id="singleTheme"></select>
+    <div class="grid2">
+      <div><label>Sponsor</label><input id="sponsor" value="Tech MCC"></div>
+      <div><label>Event</label><input id="eventName" value="Live Cricket"></div>
+    </div>
+    <div class="grid2">
+      <div><label>Accent Color</label><input id="accent" type="color" value="#15b981"></div>
+      <div><label>Position</label><select id="pos"><option value="">Default</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option><option value="center">Center</option></select></div>
+    </div>
+    <div class="grid2">
+      <div><label>Scale</label><input id="scale" type="number" min="0.5" max="1.8" step="0.1" value="1"></div>
+      <div><label>Poll ms</label><input id="poll" type="number" min="1000" step="500" value="3000"></div>
+    </div>
+    <label><input id="debug" type="checkbox" style="width:auto"> Debug box show karo</label>
+
+    <h2 style="margin-top:16px">Show / Hide Overlays</h2>
+    <div class="themes" id="themeList"></div>
+    <div class="actions">
+      <button class="secondary" onclick="selectAll()">Select All</button>
+      <button class="secondary" onclick="clearAll()">Clear</button>
+    </div>
+    <div class="actions">
+      <button class="good" onclick="applyLive()">Apply Live</button>
+      <button class="warn" onclick="loadSettings()">Load</button>
+    </div>
+    <div class="actions">
+      <button class="secondary" onclick="saveSettings()">Save Local</button>
+      <button class="secondary" onclick="disableLive()">Disable Control</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>OBS URL</h2>
+    <textarea id="urlOutput" class="urlbox" readonly></textarea>
+    <div class="actions">
+      <button onclick="copyUrl()">Copy URL</button>
+      <button class="secondary" onclick="openOverlay()">Open</button>
+    </div>
+    <div class="actions">
+      <button class="secondary" onclick="refreshPreview()">Refresh Preview</button>
+      <button class="secondary" onclick="resetDefaults()">Reset</button>
+    </div>
+    <div id="status" class="status"></div>
+    <p class="hint">OBS me Browser Source add karo, URL paste karo. Width recommended 1280, Height 720. Transparent background supported hai.</p>
+    <div class="preview"><iframe id="previewFrame" title="OBS preview"></iframe></div>
+  </div>
+</div>
+
+<script type="module">
+import { saveObsControl } from "./js/firebase-live.js";
+
+const THEMES=[
+  ["scorebug","Bottom scorebug"],
+  ["lower","Clean lower third"],
+  ["topbar","Top broadcast bar"],
+  ["vertical","Right vertical panel"],
+  ["minimal","Tiny score pill"],
+  ["commentary","Ball commentary"],
+  ["wicket","Wicket animation"],
+  ["target","Target need RRR"],
+  ["squad","Playing XI"],
+  ["broadcast","TV broadcast pack"],
+  ["neon","Neon scorebug"],
+  ["player","Player lower third"],
+  ["partnership","Partnership panel"],
+  ["rate","Chase equation"],
+  ["slate","Match status slate"],
+  ["sponsor","Sponsor bug"],
+  ["ticker","Bottom ticker"]
+];
+const KEY="obs_overlay_admin_settings";
+const el=id=>document.getElementById(id);
+
+function init(){
+  el("singleTheme").innerHTML=THEMES.map(([id,label])=>`<option value="${id}">${label}</option>`).join("");
+  el("themeList").innerHTML=THEMES.map(([id,label])=>`
+    <label class="theme">
+      <input type="checkbox" class="themeCheck" value="${id}" ${["scorebug"].includes(id)?"checked":""}>
+      <div><b>${label}</b><span>${id}</span></div>
+    </label>
+  `).join("");
+  document.querySelectorAll("input,select").forEach(x=>x.addEventListener("input",update));
+  loadSettings(false);
+  update();
+}
+function selectedThemes(){
+  return Array.from(document.querySelectorAll(".themeCheck:checked")).map(x=>x.value);
+}
+function baseUrl(){
+  return new URL("obs.html", location.href);
+}
+function buildUrl(){
+  const url=baseUrl();
+  const mode=el("mode").value;
+  url.searchParams.set("match",el("matchId").value.trim()||"liveMatch1");
+  if(mode==="gallery"){
+    url.searchParams.set("theme","gallery");
+  } else if(mode==="custom"){
+    url.searchParams.set("layout","custom");
+    url.searchParams.set("show",selectedThemes().join(",") || "scorebug");
+  } else {
+    url.searchParams.set("theme",el("singleTheme").value);
+  }
+  url.searchParams.set("sponsor",el("sponsor").value.trim()||"Tech MCC");
+  url.searchParams.set("event",el("eventName").value.trim()||"Live Cricket");
+  url.searchParams.set("accent",el("accent").value.replace("#",""));
+  url.searchParams.set("scale",el("scale").value||"1");
+  url.searchParams.set("poll",el("poll").value||"3000");
+  if(el("pos").value) url.searchParams.set("pos",el("pos").value);
+  if(el("debug").checked) url.searchParams.set("debug","1");
+  url.searchParams.set("v",Date.now());
+  return url.href;
+}
+function update(){
+  const url=buildUrl();
+  el("urlOutput").value=url;
+  el("previewFrame").src=url;
+}
+function refreshPreview(){ update(); setStatus("Preview refreshed"); }
+function copyUrl(){
+  const url=el("urlOutput").value;
+  navigator.clipboard?.writeText(url).then(()=>setStatus("URL copied")).catch(()=>{
+    el("urlOutput").select(); document.execCommand("copy"); setStatus("URL copied");
+  });
+}
+function openOverlay(){ window.open(el("urlOutput").value,"_blank"); }
+function selectAll(){ document.querySelectorAll(".themeCheck").forEach(x=>x.checked=true); update(); }
+function clearAll(){ document.querySelectorAll(".themeCheck").forEach(x=>x.checked=false); update(); }
+function settingsPayload(){
+  return {
+    enabled:true,
+    matchId:el("matchId").value,mode:el("mode").value,singleTheme:el("singleTheme").value,
+    sponsor:el("sponsor").value,eventName:el("eventName").value,accent:el("accent").value,
+    pos:el("pos").value,scale:el("scale").value,poll:el("poll").value,debug:el("debug").checked,
+    themes:selectedThemes()
+  };
+}
+function saveSettings(){ localStorage.setItem(KEY,JSON.stringify(settingsPayload())); setStatus("Settings saved"); }
+async function applyLive(){
+  const payload=settingsPayload();
+  saveSettings();
+  try{
+    await saveObsControl(payload.matchId || "liveMatch1", payload);
+    setStatus("Live OBS control applied");
+  }catch(e){
+    console.error(e);
+    setStatus("Firebase control failed");
+  }
+}
+async function disableLive(){
+  const matchId=el("matchId").value.trim()||"liveMatch1";
+  try{
+    await saveObsControl(matchId,{enabled:false,updatedAt:Date.now()});
+    setStatus("Live control disabled");
+  }catch(e){ setStatus("Disable failed"); }
+}
+function loadSettings(show=true){
+  try{
+    const data=JSON.parse(localStorage.getItem(KEY)||"null");
+    if(!data) return;
+    ["matchId","mode","singleTheme","sponsor","eventName","accent","pos","scale","poll"].forEach(id=>{ if(data[id]!==undefined) el(id).value=data[id]; });
+    el("debug").checked=!!data.debug;
+    const chosen=new Set(data.themes||[]);
+    document.querySelectorAll(".themeCheck").forEach(x=>x.checked=chosen.has(x.value));
+    update();
+    if(show) setStatus("Settings loaded");
+  }catch(e){ setStatus("Load failed"); }
+}
+function resetDefaults(){
+  localStorage.removeItem(KEY);
+  location.reload();
+}
+function setStatus(text){ el("status").innerText=text; clearTimeout(window._st); window._st=setTimeout(()=>el("status").innerText="",1800); }
+Object.assign(window,{selectAll,clearAll,saveSettings,loadSettings,resetDefaults,refreshPreview,copyUrl,openOverlay,applyLive,disableLive});
+init();
+</script>
+</body>
+</html>
