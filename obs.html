@@ -17,12 +17,21 @@
   --glass:rgba(10,18,32,.82);
   --accent:#15b981;
   --scale:1;
+  --overlay-opacity:1;
+  --overlay-z:20;
 }
 html,body{margin:0;width:100%;min-height:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:transparent;color:#fff;overflow:hidden}
 body.gallery{overflow:auto;background:#0b1220;padding:24px}
 .stage{width:100vw;height:100vh;position:relative;background:transparent}
 .gallery .stage{width:auto;height:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px}
-.obs-card{position:absolute;filter:drop-shadow(0 12px 26px rgba(0,0,0,.38));transform-origin:center;scale:var(--scale)}
+.obs-card{position:absolute;z-index:var(--overlay-z);opacity:var(--overlay-opacity);filter:drop-shadow(0 12px 26px rgba(0,0,0,.38));transform-origin:center;scale:var(--scale)}
+.anim-slide .obs-card:not(.hidden){animation:obsSlide .34s ease-out both}
+.anim-fade .obs-card:not(.hidden){animation:obsFade .34s ease-out both}
+.anim-zoom .obs-card:not(.hidden){animation:obsZoom .34s cubic-bezier(.2,.8,.2,1) both}
+.anim-none .obs-card{animation:none!important}
+@keyframes obsSlide{from{opacity:0;translate:0 18px}to{opacity:var(--overlay-opacity);translate:0 0}}
+@keyframes obsFade{from{opacity:0}to{opacity:var(--overlay-opacity)}}
+@keyframes obsZoom{from{opacity:0;scale:.86}to{opacity:var(--overlay-opacity);scale:1}}
 .gallery .obs-card{position:relative;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;min-height:112px}
 .hidden{display:none!important}
 .muted{opacity:.72}
@@ -45,6 +54,7 @@ body.gallery{overflow:auto;background:#0b1220;padding:24px}
 .scorebug .center{text-align:center}
 .scorebug .meta{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:7px}
 .scorebug .right{text-align:right;display:grid;gap:5px}
+.scorebug .stats{grid-column:1/-1;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 12px 12px}
 
 .lower{left:50%;bottom:34px;transform:translateX(-50%);width:min(920px,calc(100vw - 64px));background:rgba(255,255,255,.94);color:#08111f;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.5)}
 .lower .bar{height:8px;background:linear-gradient(90deg,#16a34a,#0ea5e9,#facc15)}
@@ -132,6 +142,13 @@ body.gallery{overflow:auto;background:#0b1220;padding:24px}
 .tickerbar .label{height:100%;display:grid;place-items:center;background:var(--accent);color:#02111c;font-weight:1000;padding:0 18px;z-index:2}
 .tickerbar .marquee{white-space:nowrap;font-weight:900;padding-left:18px;animation:marquee 22s linear infinite}
 @keyframes marquee{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
+.hot-alert{left:50%;top:42%;transform:translate(-50%,-50%);width:min(720px,calc(100vw - 80px));text-align:center;border-radius:22px;padding:34px 26px;background:linear-gradient(135deg,#052e2b,var(--accent),#0ea5e9);border:2px solid rgba(255,255,255,.55);box-shadow:0 22px 70px rgba(0,0,0,.36);animation:hotPop .52s cubic-bezier(.2,.9,.2,1) both}
+.hot-alert .hot-title{font-size:78px;font-weight:1000;line-height:.92;text-shadow:0 4px 0 rgba(0,0,0,.18)}
+.hot-alert .hot-sub{font-size:24px;font-weight:1000;margin-top:10px}
+.hot-alert.four{background:linear-gradient(135deg,#064e3b,#16a34a,#bef264);color:#fff}
+.hot-alert.six{background:linear-gradient(135deg,#312e81,#7c3aed,#f0abfc);color:#fff}
+.hot-alert.wicket{background:linear-gradient(135deg,#7f1d1d,#dc2626,#f97316);color:#fff}
+@keyframes hotPop{0%{opacity:0;scale:.72;filter:blur(8px)}60%{opacity:1;scale:1.06;filter:blur(0)}100%{opacity:1;scale:1}}
 .pos-top-left{left:24px!important;right:auto!important;top:24px!important;bottom:auto!important;transform:none!important}
 .pos-top-right{right:24px!important;left:auto!important;top:24px!important;bottom:auto!important;transform:none!important}
 .pos-bottom-left{left:24px!important;right:auto!important;bottom:24px!important;top:auto!important;transform:none!important}
@@ -146,6 +163,8 @@ body.gallery{overflow:auto;background:#0b1220;padding:24px}
 .setup-help{max-width:980px;margin:0 auto 18px;color:#dbeafe}
 .setup-help h1{margin:0 0 8px;font-size:28px}
 .setup-help code{background:#111827;padding:3px 6px;border-radius:5px;color:#fde68a}
+body.edit-mode .obs-card:not(.hidden){cursor:move;outline:2px dashed rgba(255,255,255,.45);outline-offset:4px}
+body.edit-mode .obs-card.dragging{outline-color:var(--accent);filter:drop-shadow(0 16px 32px rgba(0,0,0,.5)) brightness(1.06)}
 @media (max-width:700px){
   .scorebug,.lower,.topbar,.vertical,.target,.squad,.commentary{width:calc(100vw - 24px);left:12px;right:auto;transform:none}
   .topbar{grid-template-columns:1fr;gap:4px}
@@ -179,6 +198,7 @@ body.gallery{overflow:auto;background:#0b1220;padding:24px}
         <div class="batters"><span data-striker>-</span><span data-nonstriker>-</span></div>
         <div class="mini-over" data-over></div>
       </div>
+      <div class="stats"><span class="pill" data-bowler-spell>Bowler 0.0-0-0-0</span><span class="pill" data-last5>Last 5: -</span><span class="pill" data-projected>Proj -</span></div>
     </div>
   </div>
 
@@ -287,6 +307,10 @@ body.gallery{overflow:auto;background:#0b1220;padding:24px}
     <div class="label" data-status>LIVE</div>
     <div class="marquee" data-ticker>Waiting for live match...</div>
   </div>
+  <div class="obs-card hot-alert hidden" data-theme="hot">
+    <div class="hot-title" data-hot-title></div>
+    <div class="hot-sub" data-hot-sub></div>
+  </div>
 </div>
 
 <script type="module">
@@ -305,6 +329,15 @@ const POS = (params.get("pos") || "").trim().toLowerCase();
 const DEBUG = params.get("debug") === "1";
 const POLL_MS = Math.max(1000, Number(params.get("poll") || 3000));
 const LOCK_CONTROL = params.get("lock") === "1";
+const EDIT_MODE = params.get("edit") === "1";
+const PREVIEW_MODE = params.get("preview") === "1";
+const POSITIONS = parsePositions(params.get("positions") || "");
+const OPACITY = Number(params.get("opacity") || 1);
+const Z_INDEX = Number(params.get("z") || 20);
+const ANIMATION = (params.get("anim") || "slide").trim().toLowerCase();
+const AUTO_TRIGGERS = params.get("auto") !== "0";
+const HOT_PARAM = (params.get("hot") || "").trim().toLowerCase();
+const HOT_TEXT = (params.get("hotText") || "").trim();
 const stage = document.getElementById("stage");
 const galleryHelp = document.getElementById("galleryHelp");
 const debugBox = document.getElementById("debugBox");
@@ -312,12 +345,19 @@ const state = { data: null };
 
 if(ACCENT) document.documentElement.style.setProperty("--accent", ACCENT.startsWith("#") ? ACCENT : `#${ACCENT}`);
 if(Number.isFinite(SCALE) && SCALE>0) document.documentElement.style.setProperty("--scale", String(Math.min(Math.max(SCALE,.5),1.8)));
+if(Number.isFinite(OPACITY)) document.documentElement.style.setProperty("--overlay-opacity", String(Math.min(Math.max(OPACITY,.15),1)));
+if(Number.isFinite(Z_INDEX)) document.documentElement.style.setProperty("--overlay-z", String(Math.min(Math.max(Z_INDEX,1),9999)));
+document.body.classList.add(`anim-${["slide","fade","zoom","none"].includes(ANIMATION) ? ANIMATION : "slide"}`);
+if(EDIT_MODE) document.body.classList.add("edit-mode");
 
 if (LAYOUT === "custom" && SHOW) {
   const active = new Set(SHOW.split(",").map(x=>x.trim()).filter(Boolean));
   document.querySelectorAll("[data-theme]").forEach(el => {
     if (!active.has(el.dataset.theme)) el.classList.add("hidden");
-    else if(POS) el.classList.add(`pos-${POS}`);
+    else {
+      el.classList.remove("hidden");
+      if(POS) el.classList.add(`pos-${POS}`);
+    }
   });
 } else if (THEME === "gallery") {
   document.body.classList.add("gallery");
@@ -325,7 +365,84 @@ if (LAYOUT === "custom" && SHOW) {
 } else {
   document.querySelectorAll("[data-theme]").forEach(el => {
     if (el.dataset.theme !== THEME) el.classList.add("hidden");
-    else if(POS) el.classList.add(`pos-${POS}`);
+    else {
+      el.classList.remove("hidden");
+      if(POS) el.classList.add(`pos-${POS}`);
+    }
+  });
+}
+applyCustomPositions(POSITIONS);
+if(EDIT_MODE) enableDragEditor();
+if(HOT_PARAM) showHotEvent(HOT_PARAM, HOT_TEXT || HOT_PARAM.toUpperCase(), "", 4500);
+
+function parsePositions(value){
+  if(!value) return {};
+  try{
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  }catch(error){
+    try{
+      const parsed = JSON.parse(decodeURIComponent(value));
+      return parsed && typeof parsed === "object" ? parsed : {};
+    }catch(secondError){
+      return {};
+    }
+  }
+}
+function applyCustomPositions(positions){
+  Object.entries(positions || {}).forEach(([theme, point]) => {
+    const card = Array.from(document.querySelectorAll("[data-theme]")).find(item => item.dataset.theme === theme);
+    if(!card || !point) return;
+    const x = Number(point.x);
+    const y = Number(point.y);
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+    card.style.left = `${Math.max(0, x)}px`;
+    card.style.top = `${Math.max(0, y)}px`;
+    card.style.right = "auto";
+    card.style.bottom = "auto";
+    card.style.transform = "none";
+  });
+}
+function currentPositions(){
+  const out = {};
+  document.querySelectorAll("[data-theme]:not(.hidden)").forEach(card => {
+    const rect = card.getBoundingClientRect();
+    out[card.dataset.theme] = { x: Math.round(rect.left), y: Math.round(rect.top) };
+  });
+  return out;
+}
+function enableDragEditor(){
+  let active = null;
+  stage.addEventListener("pointerdown", (event) => {
+    const card = event.target.closest("[data-theme]");
+    if(!card || card.classList.contains("hidden")) return;
+    const rect = card.getBoundingClientRect();
+    active = {
+      card,
+      dx: event.clientX - rect.left,
+      dy: event.clientY - rect.top
+    };
+    card.classList.add("dragging");
+    card.style.left = `${rect.left}px`;
+    card.style.top = `${rect.top}px`;
+    card.style.right = "auto";
+    card.style.bottom = "auto";
+    card.style.transform = "none";
+    card.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+  stage.addEventListener("pointermove", (event) => {
+    if(!active) return;
+    active.card.style.left = `${Math.max(0, event.clientX - active.dx)}px`;
+    active.card.style.top = `${Math.max(0, event.clientY - active.dy)}px`;
+    window.parent?.postMessage({ type:"obs-positions", positions: currentPositions() }, "*");
+  });
+  stage.addEventListener("pointerup", (event) => {
+    if(!active) return;
+    active.card.releasePointerCapture?.(event.pointerId);
+    active.card.classList.remove("dragging");
+    window.parent?.postMessage({ type:"obs-positions", positions: currentPositions() }, "*");
+    active = null;
   });
 }
 function debug(message){
@@ -369,11 +486,58 @@ function computeChase(data){
   const need = Math.max(target - Number(data?.runs || 0), 0);
   return { target, need, rrr: remBalls ? ((need * 6) / remBalls).toFixed(2) : (need ? "INF" : "0.00") };
 }
+function lastFiveText(data){
+  const events = Array.isArray(data?.ballEvents) ? data.ballEvents : [];
+  const recent = events.slice(-30);
+  if(!recent.length) return "-";
+  const runs = recent.reduce((sum,item)=>sum + Number(item?.runs || item?.batRuns || 0), 0);
+  const wkts = recent.filter(item=>item?.wicket || /W/i.test(String(item?.result || item?.label || ""))).length;
+  return `${runs}/${wkts}`;
+}
+function projectedScore(data){
+  const balls = Number(data?.balls || 0);
+  const totalOvers = Number(data?.totalOvers || 20);
+  if(!balls || !totalOvers) return "-";
+  return Math.round((Number(data?.runs || 0) / balls) * totalOvers * 6);
+}
+function bowlerSpell(data){
+  const bowler = data?.bowler || {};
+  const name = bowler.name || data?.currentBowler || "Bowler";
+  const balls = Number(bowler.balls || bowler.b || 0);
+  const overs = balls ? overText(balls) : (bowler.overs || "0.0");
+  return `${name} ${overs}-${Number(bowler.maidens || 0)}-${Number(bowler.runs || bowler.r || 0)}-${Number(bowler.wickets || bowler.w || 0)}`;
+}
 function normalizePlayers(data, team){
   const players = data?.teams?.[team];
   if(Array.isArray(players)) return players;
   if(typeof players === "string") return players.split(/\s+/).filter(Boolean);
   return [];
+}
+let lastAutoKey = "";
+let hotTimer = 0;
+function showHotEvent(type, title, sub="", duration=4200){
+  const card = document.querySelector('[data-theme="hot"]');
+  if(!card) return;
+  if(type === "clear"){
+    card.classList.add("hidden");
+    return;
+  }
+  card.className = `obs-card hot-alert ${type || ""}`;
+  setText("[data-hot-title]", title || String(type || "").toUpperCase());
+  setText("[data-hot-sub]", sub || EVENT);
+  clearTimeout(hotTimer);
+  hotTimer = setTimeout(()=>card.classList.add("hidden"), duration);
+}
+function autoTrigger(data, over, last){
+  if(!AUTO_TRIGGERS || PREVIEW_MODE) return;
+  const ball = String(over[over.length-1] || last.ball || "");
+  const text = String(last.text || "");
+  const key = `${data?.balls || 0}:${ball}:${text}`;
+  if(!ball || key === lastAutoKey) return;
+  lastAutoKey = key;
+  if(/W/i.test(ball) || /wicket/i.test(text)) showHotEvent("wicket","WICKET",data.lastWicket || "Big breakthrough",5200);
+  else if(ball === "6") showHotEvent("six","SIX","Maximum",4200);
+  else if(ball === "4") showHotEvent("four","FOUR","Boundary",3800);
 }
 function render(data){
   if(!data || typeof data !== "object"){ debug(`No live data for match=${MATCH_ID}`); return; }
@@ -399,6 +563,9 @@ function render(data){
   setText("[data-overs]", data.overs || overText(data.balls || 0));
   setText("[data-status]", data.liveStatus || (data.liveControl?.mode === "delay" ? "DELAY" : data.liveControl?.mode === "paused" ? "BREAK" : "LIVE"));
   setText("[data-crr]", `CRR ${crr}`);
+  setText("[data-bowler-spell]", bowlerSpell(data));
+  setText("[data-last5]", `Last 5: ${lastFiveText(data)}`);
+  setText("[data-projected]", `Proj ${projectedScore(data)}`);
   setText("[data-target-line]", chase.target === "-" ? "Target -" : `Need ${chase.need}`);
   setText("[data-target]", chase.target);
   setText("[data-need]", chase.need);
@@ -422,7 +589,9 @@ function render(data){
   setText("[data-ticker]", `${data.matchTitle || `${batTeam} vs ${bowlTeam}`} · ${batTeam} ${Number(data.runs||0)}/${Number(data.wkts||data.wickets||0)} (${data.overs || overText(data.balls||0)}) · ${data.tossText || ""} · ${last.text || ""}`);
 
   const isWicket = /W/i.test(String(over[over.length-1] || "")) || /wicket/i.test(String(last.text || ""));
+  autoTrigger(data, over, last);
   document.querySelectorAll('[data-theme="wicket"]').forEach(el => {
+    if(PREVIEW_MODE) return;
     el.classList.toggle("hidden", THEME !== "gallery" && THEME !== "wicket" ? true : !isWicket);
   });
 }
@@ -455,9 +624,16 @@ if(!LOCK_CONTROL){
     setOrDelete("event", control.eventName || "Live Cricket");
     setOrDelete("accent", String(control.accent || "#15b981").replace("#",""));
     setOrDelete("scale", control.scale || "1");
+    setOrDelete("opacity", control.opacity || "1");
+    setOrDelete("z", control.zIndex || "20");
+    setOrDelete("anim", control.animation || "slide");
+    setOrDelete("auto", control.autoTriggers === false ? "0" : "1");
     setOrDelete("poll", control.poll || "3000");
     setOrDelete("pos", control.pos || "");
     setOrDelete("debug", control.debug ? "1" : "");
+    setOrDelete("positions", control.positions ? JSON.stringify(control.positions) : "");
+    setOrDelete("hot", control.hotEvent?.type || "");
+    setOrDelete("hotText", control.hotEvent?.text || "");
     setOrDelete("controlVersion", control.updatedAt || Date.now());
     if(next.href !== location.href) location.replace(next.href);
   }, (error)=>debug(`OBS control failed: ${error.message || error}`));

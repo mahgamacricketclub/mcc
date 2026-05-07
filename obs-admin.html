@@ -10,7 +10,7 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-se
 .top{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,#07111f,#123d57);color:#fff;padding:14px 18px;box-shadow:0 10px 24px rgba(15,23,42,.18)}
 .top h1{margin:0;font-size:20px}
 .top p{margin:4px 0 0;color:#cfe7f2;font-size:13px}
-.wrap{max-width:1180px;margin:0 auto;padding:16px;display:grid;grid-template-columns:360px 1fr;gap:16px}
+.wrap{max-width:1240px;margin:0 auto;padding:16px;display:grid;grid-template-columns:390px 1fr;gap:16px}
 .panel{background:#fff;border:1px solid #dce7f1;border-radius:10px;padding:14px;box-shadow:0 10px 24px rgba(15,23,42,.06)}
 h2{font-size:15px;margin:0 0 12px;color:#123d57}
 label{display:block;font-size:12px;font-weight:900;color:#526176;margin:10px 0 5px;text-transform:uppercase}
@@ -19,26 +19,44 @@ input[type=color]{padding:3px;height:42px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .themes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .theme{border:1px solid #dbe5ef;border-radius:8px;padding:10px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;background:#f8fafc}
+.theme:has(input:checked){background:#e8f7f2;border-color:#0f766e}
 .theme input{width:auto;margin-top:2px}
 .theme b{display:block;font-size:13px}
 .theme span{display:block;font-size:11px;color:#64748b;line-height:1.3;margin-top:2px}
 .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-button{border:0;border-radius:8px;padding:11px 12px;font-weight:1000;cursor:pointer;background:#123d57;color:#fff}
+.actions.three{grid-template-columns:1fr 1fr 1fr}
+button{border:0;border-radius:8px;padding:11px 12px;font-weight:1000;cursor:pointer;background:#123d57;color:#fff;min-height:42px}
 button.secondary{background:#e7eef5;color:#123d57}
 button.good{background:#0f766e}
 button.warn{background:#b45309}
+button.hot{background:#dc2626}
+button.blue{background:#0369a1}
+button.big{font-size:16px;min-height:50px}
 .urlbox{font-family:ui-monospace,Consolas,monospace;font-size:12px;min-height:74px;resize:vertical}
+.urlbox.sources{min-height:138px}
 .preview{height:620px;background:#08111f;border-radius:10px;overflow:hidden;border:1px solid #0f172a}
 iframe{width:100%;height:100%;border:0;background:transparent}
 .hint{font-size:12px;color:#64748b;line-height:1.45}
-.status{font-size:12px;font-weight:900;color:#0f766e;margin-top:8px;min-height:18px}
+.status{font-size:13px;font-weight:1000;color:#0f766e;margin-top:8px;min-height:22px;background:#e8f7f2;border:1px solid #b7eadb;border-radius:8px;padding:8px 10px}
+.status:empty{display:none}
+.mini-note{font-size:11px;color:#64748b;margin-top:8px;line-height:1.35}
+.quick{position:sticky;top:76px;z-index:4;background:#f8fafc;border:1px solid #dbe7f0;border-radius:10px;padding:10px;margin:12px 0}
+.summary{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+.chip{display:inline-flex;align-items:center;border-radius:999px;background:#e7eef5;color:#123d57;padding:5px 9px;font-size:11px;font-weight:1000}
+.chip.live{background:#dcfce7;color:#166534}
+.chip.warn{background:#fff7ed;color:#9a3412}
+details.fold{border:1px solid #dbe7f0;border-radius:10px;background:#f8fafc;margin-top:12px;padding:0 10px 10px}
+details.fold summary{cursor:pointer;font-size:13px;font-weight:1000;color:#123d57;padding:11px 0;list-style:none}
+details.fold summary::-webkit-details-marker{display:none}
+details.fold summary::after{content:"+";float:right;color:#64748b}
+details.fold[open] summary::after{content:"-"}
 @media(max-width:900px){.wrap{grid-template-columns:1fr}.preview{height:520px}.themes{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="top">
   <h1>OBS Overlay Admin</h1>
-  <p>Select karo kaunsa overlay OBS me show/hide karna hai, phir URL copy karke OBS Browser Source me paste karo.</p>
+  <p>Select karo kaunsa overlay OBS me show/hide karna hai, preview me drag karke position set karo, phir ek saath OBS me push karo.</p>
 </div>
 
 <div class="wrap">
@@ -48,12 +66,22 @@ iframe{width:100%;height:100%;border:0;background:transparent}
       <div><label>Match ID</label><input id="matchId" value="liveMatch1"></div>
       <div><label>Mode</label><select id="mode"><option value="single">Single Theme</option><option value="custom">Custom Multi</option><option value="gallery">Gallery Preview</option></select></div>
     </div>
+    <div class="quick">
+      <button class="good big" onclick="applyLive()">Push Live</button>
+      <div class="actions">
+        <button class="secondary" onclick="refreshPreview()">Preview</button>
+        <button class="secondary" onclick="pushHot('clear')">Clear Hot</button>
+      </div>
+      <div id="quickSummary" class="summary"></div>
+    </div>
     <label>Single Theme</label>
     <select id="singleTheme"></select>
     <div class="grid2">
       <div><label>Sponsor</label><input id="sponsor" value="Tech MCC"></div>
       <div><label>Event</label><input id="eventName" value="Live Cricket"></div>
     </div>
+    <details class="fold">
+      <summary>Advanced Style</summary>
     <div class="grid2">
       <div><label>Accent Color</label><input id="accent" type="color" value="#15b981"></div>
       <div><label>Position</label><select id="pos"><option value="">Default</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option><option value="center">Center</option></select></div>
@@ -62,7 +90,39 @@ iframe{width:100%;height:100%;border:0;background:transparent}
       <div><label>Scale</label><input id="scale" type="number" min="0.5" max="1.8" step="0.1" value="1"></div>
       <div><label>Poll ms</label><input id="poll" type="number" min="1000" step="500" value="3000"></div>
     </div>
+    <div class="grid2">
+      <div><label>Opacity</label><input id="opacity" type="number" min="0.15" max="1" step="0.05" value="1"></div>
+      <div><label>Layer Z</label><input id="zIndex" type="number" min="1" max="9999" step="1" value="20"></div>
+    </div>
+    <label>Animation</label>
+    <select id="animation"><option value="slide">Slide</option><option value="fade">Fade</option><option value="zoom">Zoom</option><option value="none">None</option></select>
     <label><input id="debug" type="checkbox" style="width:auto"> Debug box show karo</label>
+    <label><input id="autoTriggers" type="checkbox" style="width:auto" checked> Auto 4/6/Wicket trigger</label>
+    </details>
+
+    <h2 style="margin-top:16px">Scene Presets</h2>
+    <div class="actions three">
+      <button class="blue" onclick="applyPreset('powerplay')">Powerplay</button>
+      <button class="blue" onclick="applyPreset('wicket')">Wicket</button>
+      <button class="blue" onclick="applyPreset('break')">Break</button>
+    </div>
+    <div class="actions three">
+      <button class="blue" onclick="applyPreset('innings')">Innings</button>
+      <button class="blue" onclick="applyPreset('result')">Result</button>
+      <button class="blue" onclick="applyPreset('chase')">Chase</button>
+    </div>
+
+    <h2 style="margin-top:16px">Hot Buttons</h2>
+    <div class="actions three">
+      <button class="hot" onclick="pushHot('four')">FOUR</button>
+      <button class="hot" onclick="pushHot('six')">SIX</button>
+      <button class="hot" onclick="pushHot('wicket')">WICKET</button>
+    </div>
+    <div class="actions three">
+      <button class="secondary" onclick="pushHot('target')">Target</button>
+      <button class="secondary" onclick="pushHot('player')">Batter</button>
+      <button class="secondary" onclick="pushHot('clear')">Clear</button>
+    </div>
 
     <h2 style="margin-top:16px">Show / Hide Overlays</h2>
     <div class="themes" id="themeList"></div>
@@ -71,18 +131,22 @@ iframe{width:100%;height:100%;border:0;background:transparent}
       <button class="secondary" onclick="clearAll()">Clear</button>
     </div>
     <div class="actions">
-      <button class="good" onclick="applyLive()">Apply Live</button>
+      <button class="secondary" onclick="saveSettings()">Save Local</button>
       <button class="warn" onclick="loadSettings()">Load</button>
     </div>
     <div class="actions">
-      <button class="secondary" onclick="saveSettings()">Save Local</button>
       <button class="secondary" onclick="disableLive()">Disable Control</button>
+      <button class="secondary" onclick="resetPositions()">Reset Positions</button>
     </div>
   </div>
 
   <div class="panel">
     <h2>OBS URL</h2>
     <textarea id="urlOutput" class="urlbox" readonly></textarea>
+    <details class="fold">
+      <summary>Separate Source URLs</summary>
+      <textarea id="sourceUrls" class="urlbox sources" readonly></textarea>
+    </details>
     <div class="actions">
       <button onclick="copyUrl()">Copy URL</button>
       <button class="secondary" onclick="openOverlay()">Open</button>
@@ -120,6 +184,16 @@ const THEMES=[
   ["ticker","Bottom ticker"]
 ];
 const KEY="obs_overlay_admin_settings";
+const PRESETS={
+  powerplay:{mode:"custom",themes:["broadcast","ticker","sponsor"],eventName:"Powerplay",animation:"slide",pos:"",scale:"1"},
+  wicket:{mode:"custom",themes:["wicket","scorebug","ticker"],eventName:"Wicket",animation:"zoom",pos:"center",scale:"1"},
+  break:{mode:"custom",themes:["slate","sponsor","ticker"],eventName:"Break",animation:"fade",pos:"center",scale:"1"},
+  innings:{mode:"custom",themes:["slate","target","ticker"],eventName:"Innings Break",animation:"fade",pos:"center",scale:"1"},
+  result:{mode:"custom",themes:["slate","broadcast","sponsor"],eventName:"Result",animation:"zoom",pos:"center",scale:"1"},
+  chase:{mode:"custom",themes:["broadcast","rate","ticker"],eventName:"Chase",animation:"slide",pos:"",scale:"1"}
+};
+let customPositions = {};
+let previewTimer = 0;
 const el=id=>document.getElementById(id);
 
 function init(){
@@ -131,6 +205,13 @@ function init(){
     </label>
   `).join("");
   document.querySelectorAll("input,select").forEach(x=>x.addEventListener("input",update));
+  window.addEventListener("message", (event) => {
+    if(event?.data?.type !== "obs-positions") return;
+    customPositions = event.data.positions || {};
+    updateUrl();
+    saveSettings(false);
+    setStatus("Position updated");
+  });
   loadSettings(false);
   update();
 }
@@ -140,7 +221,10 @@ function selectedThemes(){
 function baseUrl(){
   return new URL("obs.html", location.href);
 }
-function buildUrl(){
+function encodePositions(){
+  return Object.keys(customPositions || {}).length ? JSON.stringify(customPositions) : "";
+}
+function buildUrl(forPreview=false){
   const url=baseUrl();
   const mode=el("mode").value;
   url.searchParams.set("match",el("matchId").value.trim()||"liveMatch1");
@@ -159,15 +243,73 @@ function buildUrl(){
   url.searchParams.set("poll",el("poll").value||"3000");
   if(el("pos").value) url.searchParams.set("pos",el("pos").value);
   if(el("debug").checked) url.searchParams.set("debug","1");
-  url.searchParams.set("v",Date.now());
+  const positions = encodePositions();
+  if(positions) url.searchParams.set("positions", positions);
+  url.searchParams.set("opacity",el("opacity").value||"1");
+  url.searchParams.set("z",el("zIndex").value||"20");
+  url.searchParams.set("anim",el("animation").value||"slide");
+  if(el("autoTriggers").checked) url.searchParams.set("auto","1");
+  if(forPreview){
+    url.searchParams.set("lock","1");
+    url.searchParams.set("edit","1");
+    url.searchParams.set("preview","1");
+  }
   return url.href;
 }
-function update(){
-  const url=buildUrl();
-  el("urlOutput").value=url;
-  el("previewFrame").src=url;
+function updateUrl(){
+  el("urlOutput").value=buildUrl(false);
+  el("sourceUrls").value=buildSourceUrls();
+  updateSummary();
 }
-function refreshPreview(){ update(); setStatus("Preview refreshed"); }
+function updateSummary(){
+  const box = el("quickSummary");
+  if(!box) return;
+  const themes = selectedThemes();
+  const mode = el("mode").value;
+  const visibleCount = mode === "custom" ? Math.max(themes.length, 1) : 1;
+  const labels = [
+    `<span class="chip live">${visibleCount} overlay</span>`,
+    `<span class="chip">${mode}</span>`,
+    `<span class="chip">${el("animation").value}</span>`,
+    el("autoTriggers").checked ? `<span class="chip live">auto on</span>` : `<span class="chip warn">auto off</span>`
+  ];
+  if(mode === "custom" && themes.length) labels.push(`<span class="chip">${themes.slice(0,3).join(", ")}${themes.length>3 ? " +" + (themes.length-3) : ""}</span>`);
+  box.innerHTML = labels.join("");
+}
+function sourceUrl(theme){
+  const url=baseUrl();
+  url.searchParams.set("match",el("matchId").value.trim()||"liveMatch1");
+  url.searchParams.set("theme",theme);
+  url.searchParams.set("sponsor",el("sponsor").value.trim()||"Tech MCC");
+  url.searchParams.set("event",el("eventName").value.trim()||"Live Cricket");
+  url.searchParams.set("accent",el("accent").value.replace("#",""));
+  url.searchParams.set("scale",el("scale").value||"1");
+  url.searchParams.set("opacity",el("opacity").value||"1");
+  url.searchParams.set("z",el("zIndex").value||"20");
+  url.searchParams.set("anim",el("animation").value||"slide");
+  if(el("autoTriggers").checked) url.searchParams.set("auto","1");
+  url.searchParams.set("lock","1");
+  return url.href;
+}
+function buildSourceUrls(){
+  return ["scorebug","ticker","sponsor","wicket","player","target"].map(theme=>`${theme}: ${sourceUrl(theme)}`).join("\n");
+}
+function update(){
+  updateUrl();
+  schedulePreview();
+}
+function schedulePreview(){
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    const url = buildUrl(true);
+    if(el("previewFrame").src !== url) el("previewFrame").src = url;
+  }, 220);
+}
+function refreshPreview(){
+  updateUrl();
+  el("previewFrame").src = `${buildUrl(true)}&previewRefresh=${Date.now()}`;
+  setStatus("Preview refreshed");
+}
 function copyUrl(){
   const url=el("urlOutput").value;
   navigator.clipboard?.writeText(url).then(()=>setStatus("URL copied")).catch(()=>{
@@ -177,25 +319,67 @@ function copyUrl(){
 function openOverlay(){ window.open(el("urlOutput").value,"_blank"); }
 function selectAll(){ document.querySelectorAll(".themeCheck").forEach(x=>x.checked=true); update(); }
 function clearAll(){ document.querySelectorAll(".themeCheck").forEach(x=>x.checked=false); update(); }
+function resetPositions(){ customPositions={}; update(); saveSettings(false); setStatus("Positions reset"); }
+function applyPreset(name){
+  const preset=PRESETS[name];
+  if(!preset) return;
+  el("mode").value=preset.mode;
+  el("eventName").value=preset.eventName;
+  el("animation").value=preset.animation;
+  el("pos").value=preset.pos;
+  el("scale").value=preset.scale;
+  const chosen=new Set(preset.themes);
+  document.querySelectorAll(".themeCheck").forEach(x=>x.checked=chosen.has(x.value));
+  customPositions={};
+  update();
+  setStatus(`${name} preset ready`);
+}
 function settingsPayload(){
   return {
     enabled:true,
     matchId:el("matchId").value,mode:el("mode").value,singleTheme:el("singleTheme").value,
     sponsor:el("sponsor").value,eventName:el("eventName").value,accent:el("accent").value,
     pos:el("pos").value,scale:el("scale").value,poll:el("poll").value,debug:el("debug").checked,
-    themes:selectedThemes()
+    opacity:el("opacity").value,zIndex:el("zIndex").value,animation:el("animation").value,autoTriggers:el("autoTriggers").checked,
+    themes:selectedThemes(),
+    positions:customPositions
   };
 }
-function saveSettings(){ localStorage.setItem(KEY,JSON.stringify(settingsPayload())); setStatus("Settings saved"); }
+function saveSettings(show=true){ localStorage.setItem(KEY,JSON.stringify(settingsPayload())); if(show) setStatus("Settings saved"); }
 async function applyLive(){
   const payload=settingsPayload();
-  saveSettings();
+  if(payload.mode === "custom" && !payload.themes.length){
+    payload.themes = ["scorebug"];
+  }
+  saveSettings(false);
   try{
     await saveObsControl(payload.matchId || "liveMatch1", payload);
-    setStatus("Live OBS control applied");
+    setStatus(`Live OBS push done: ${payload.mode === "custom" ? payload.themes.length : 1} overlay`);
   }catch(e){
     console.error(e);
     setStatus("Firebase control failed");
+  }
+}
+async function pushHot(type){
+  const payload=settingsPayload();
+  const map={
+    four:{type:"four",text:"FOUR",sub:"Boundary"},
+    six:{type:"six",text:"SIX",sub:"Maximum"},
+    wicket:{type:"wicket",text:"WICKET",sub:"Big breakthrough"},
+    target:{type:"target",text:"TARGET",sub:"Chase equation"},
+    player:{type:"player",text:"BATTER",sub:"On strike stats"},
+    clear:{type:"clear",text:"",sub:""}
+  };
+  payload.hotEvent={...(map[type]||map.clear),id:Date.now(),duration:4500};
+  if(type==="target" && !payload.themes.includes("target")) payload.themes.push("target");
+  if(type==="player" && !payload.themes.includes("player")) payload.themes.push("player");
+  if(type==="wicket" && !payload.themes.includes("wicket")) payload.themes.push("wicket");
+  try{
+    await saveObsControl(payload.matchId || "liveMatch1", payload);
+    setStatus(type==="clear" ? "Hot overlay cleared" : `${payload.hotEvent.text} pushed`);
+  }catch(e){
+    console.error(e);
+    setStatus("Hot push failed");
   }
 }
 async function disableLive(){
@@ -209,8 +393,10 @@ function loadSettings(show=true){
   try{
     const data=JSON.parse(localStorage.getItem(KEY)||"null");
     if(!data) return;
-    ["matchId","mode","singleTheme","sponsor","eventName","accent","pos","scale","poll"].forEach(id=>{ if(data[id]!==undefined) el(id).value=data[id]; });
+    ["matchId","mode","singleTheme","sponsor","eventName","accent","pos","scale","poll","opacity","zIndex","animation"].forEach(id=>{ if(data[id]!==undefined) el(id).value=data[id]; });
     el("debug").checked=!!data.debug;
+    el("autoTriggers").checked=data.autoTriggers!==false;
+    customPositions = data.positions || {};
     const chosen=new Set(data.themes||[]);
     document.querySelectorAll(".themeCheck").forEach(x=>x.checked=chosen.has(x.value));
     update();
@@ -222,7 +408,8 @@ function resetDefaults(){
   location.reload();
 }
 function setStatus(text){ el("status").innerText=text; clearTimeout(window._st); window._st=setTimeout(()=>el("status").innerText="",1800); }
-Object.assign(window,{selectAll,clearAll,saveSettings,loadSettings,resetDefaults,refreshPreview,copyUrl,openOverlay,applyLive,disableLive});
+Object.assign(window,{selectAll,clearAll,saveSettings,loadSettings,resetDefaults,refreshPreview,copyUrl,openOverlay,applyLive,disableLive,applyPreset,pushHot});
+window.resetPositions = resetPositions;
 init();
 </script>
 </body>
