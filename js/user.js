@@ -1,15 +1,14 @@
-﻿﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { firebaseConfig } from "../firebase/firebase-config.js";
-
-const app_firebase = initializeApp(firebaseConfig);
-const db = getFirestore(app_firebase);
+﻿﻿import { firestoreDb as db, doc, onSnapshot } from "./firebase-store.js";
+import { listenLiveMatch, trackViewer } from "./live-sync.js";
 const params = new URLSearchParams(location.search);
 const MATCH_ID = (params.get("match") || "liveMatch1").trim();
 const USER_MATCH_BACKUP_KEY = `cricket_user_match_backup_${MATCH_ID}`;
 
 window.app = {
   state: {},
+  permanentState: {},
+  unsubscribeLive: null,
+  unsubscribePermanent: null,
   scorecardView: "teamA",
   matchesFilter: "all",
   selectedMatchIndex: undefined,
@@ -76,18 +75,51 @@ window.app = {
   },
 
   setupFirebase() {
-    onSnapshot(doc(db, "matches", MATCH_ID), (snap) => {
+    // Firestore: permanent data like completed matches, league, points table, teams.
+    this.unsubscribePermanent = onSnapshot(doc(db, "matches", MATCH_ID), (snap) => {
       if (snap.exists()) {
-        this.state = snap.data() || {};
+        this.permanentState = snap.data() || {};
+        // Jab live RTDB data available nahi ho, tab permanent Firestore fallback use hota hai.
+        if(!this.state || !this.state.liveStarted){
+          this.state = { ...(this.state || {}), ...this.permanentState };
+          this.persistMatchBackup();
+          this.scheduleRender();
+        }
+      } else if(!this.state || Object.keys(this.state).length === 0) {
+        this.showNoLive("No live match created yet");
+      }
+    }, (error) => {
+      console.error("Firestore Error:", error);
+      if(!this.state || Object.keys(this.state).length === 0) this.showNoLive("Unable to connect to match history");
+    });
+
+    // Realtime Database: ultra-fast live score, commentary, over timeline.
+    this.unsubscribeLive = listenLiveMatch(MATCH_ID, (liveData) => {
+      if(liveData && liveData.liveStarted && !liveData.matchFinished){
+        this.state = { ...(this.permanentState || {}), ...liveData };
+        this.persistMatchBackup();
+        this.scheduleRender();
+        return;
+      }
+      // Live match remove ho chuka hai, completed history Firestore se dikhao.
+      if(this.permanentState && Object.keys(this.permanentState).length){
+        this.state = this.permanentState;
         this.persistMatchBackup();
         this.scheduleRender();
       } else {
         this.showNoLive("No live match created yet");
       }
     }, (error) => {
-      console.error("Firebase Error:", error);
-      this.showNoLive("Unable to connect to live match");
+      console.error("Realtime DB Error:", error);
+      if(this.permanentState && Object.keys(this.permanentState).length){
+        this.state = this.permanentState;
+        this.scheduleRender();
+      } else {
+        this.showNoLive("Unable to connect to live match");
+      }
     });
+
+    trackViewer(MATCH_ID);
   },
   loadMatchBackup(){
     try{

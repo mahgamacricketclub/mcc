@@ -1,8 +1,6 @@
-﻿import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { firebaseConfig } from "../firebase/firebase-config.js";
-
-const db = getFirestore(initializeApp(firebaseConfig));
+﻿import { firestoreDb as db, doc, setDoc, onSnapshot } from "./firebase-store.js";
+import { publishLiveMatch, removeLiveMatch } from "./live-sync.js";
+import { completeHybridMatch } from "./match-complete.js";
 const params = new URLSearchParams(location.search);
 const MATCH_ID = (params.get("match") || "liveMatch1").trim();
 const TEAM_CATALOG_ID = "teamCatalog";
@@ -1366,19 +1364,35 @@ window.app = {
     if(!derivedWinner){
       return this.showPopup("Complete se pehle 2nd innings / target hona chahiye.","warn");
     }
-    if(!this.state.matchFinished && !confirm(`Complete match?\n${derivedWinner}`)) return;
+    if(!this.state.matchFinished && !confirm(`Complete match?
+${derivedWinner}`)) return;
     this.state.winnerText=derivedWinner;
     this.state.matchFinished=true;
     this.state.liveStarted=false;
     this.state.scoringLocked=true;
     this.state.liveControl={mode:"paused",note:"Match Complete"};
+
+    // Final match record banne ke baad full result Firestore me save hota hai.
     if(!this.state.resultRecorded) this.finalizeMatchRecord();
+    const completedMatch = Array.isArray(this.state.completedMatches) ? this.state.completedMatches[0] : null;
+
     this.clearCurrentLiveAfterComplete();
     this.clearUndoBackup();
     this.hasLocalChanges=true;
     this.render(false);
-    await this.saveToFirebase(true);
-    this.showPopup("Match completed and published","success");
+
+    try{
+      if(completedMatch){
+        await completeHybridMatch(MATCH_ID, completedMatch, this.state);
+      }
+      await this.saveToFirebase(true);
+      await removeLiveMatch(MATCH_ID).catch(()=>{});
+      this.showPopup("Match completed: Firestore history saved + live removed","success");
+    }catch(e){
+      console.error(e);
+      this.showPopup("Complete save failed. Internet/Firebase rules check karo.","warn");
+      await this.saveToFirebase(true);
+    }
   },
   handleShortcuts(e){ const t=e.target?.tagName?.toLowerCase(); if(["input","textarea","select"].includes(t)) return; const k=e.key.toLowerCase(); if(["0","1","2","3","4","5","6"].includes(k)) return this.addBall(parseInt(k,10)); if(k==="w"){ const el=document.getElementById("wicket"); if(el){ el.checked=!el.checked; this.handleWicketToggle(el); } } if(k==="n") document.getElementById("noball").checked=!document.getElementById("noball").checked; if(k==="d") document.getElementById("wide").checked=!document.getElementById("wide").checked; },
   applyPlayerNames(){ const strikerEl=document.getElementById("strikerName"), nonStrikerEl=document.getElementById("nonStrikerName"), bowlerEl=document.getElementById("bowlerNameInput"); if(!strikerEl||!nonStrikerEl||!bowlerEl) return; this.hasLocalChanges=true; const s=strikerEl.value, ns=nonStrikerEl.value, b=bowlerEl.value; if(s && ns && s===ns){ this.showPopup("Striker and Non-Striker cannot be same.","warn"); this.refreshPlayerDeskSelectors(); return; } if(s) this.state.bat1.name=s; if(ns) this.state.bat2.name=ns; if(b && b===this.state.lastOverBowler && (this.state.balls%6===0) && this.state.balls>0){ this.showPopup("Same bowler cannot bowl consecutive overs.","warn"); this.refreshPlayerDeskSelectors(); return; } if(b) this.state.bowler.name=b; this.render(); this.hidePlayerDesk(); },
@@ -1641,17 +1655,31 @@ window.app = {
       if(!this.isHydrated && !force) return false;
       if(!this.hasLocalChanges && !force) return true;
       await this.flushOfflineQueue();
-      const data={...this.state,timestamp:Date.now(),updatedBy:this.sessionId};
+
+      const isLive = !!this.state.liveStarted && !this.state.matchFinished;
+      const timestamp = Date.now();
+      const data={...this.state,timestamp,updatedBy:this.sessionId};
       data.teamCatalog=this.state.teams||{};
       data.teamInfo=this.state.teamInfo||{};
       delete data.history;
       delete data.ballHistory;
       delete data.ballEvents;
       this.persistMatchBackup();
-      await setDoc(doc(db,"matches",MATCH_ID),data);
-      this.lastSync=data.timestamp;
+
+      // FAST LIVE DATA: ball-by-ball scoring Realtime Database me publish hota hai.
+      if(isLive){
+        await publishLiveMatch(MATCH_ID, data);
+      }
+
+      // PERMANENT DATA: setup, teams, league, points table, and completed history Firestore me save hota hai.
+      // Normal ball update par Firestore write avoid kiya gaya hai taaki cost low rahe.
+      if(force || !isLive){
+        await setDoc(doc(db,"matches",MATCH_ID),data,{merge:false});
+      }
+
+      this.lastSync=timestamp;
       this.hasLocalChanges=false;
-      this.setStatus("Firebase: saved","success");
+      this.setStatus(isLive ? "Realtime DB: live saved" : "Firestore: saved","success");
       setTimeout(()=>this.setStatus("Firebase: ready",""),1200);
       return true;
     }catch(e){
