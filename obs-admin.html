@@ -10,21 +10,32 @@ body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-se
 .top{position:sticky;top:0;z-index:5;background:linear-gradient(135deg,#07111f,#123d57);color:#fff;padding:14px 18px;box-shadow:0 10px 24px rgba(15,23,42,.18)}
 .top h1{margin:0;font-size:20px}
 .top p{margin:4px 0 0;color:#cfe7f2;font-size:13px}
-.wrap{max-width:1240px;margin:0 auto;padding:16px;display:grid;grid-template-columns:390px 1fr;gap:16px}
+.wrap{max-width:1240px;margin:0 auto;padding:16px;display:grid;grid-template-columns:430px 1fr;gap:16px}
+.control-panel{max-height:calc(100vh - 84px);overflow:auto}
 .panel{background:#fff;border:1px solid #dce7f1;border-radius:10px;padding:14px;box-shadow:0 10px 24px rgba(15,23,42,.06)}
 h2{font-size:15px;margin:0 0 12px;color:#123d57}
 label{display:block;font-size:12px;font-weight:900;color:#526176;margin:10px 0 5px;text-transform:uppercase}
 input,select,textarea{width:100%;border:1px solid #ccd9e4;border-radius:8px;padding:10px;font:inherit;background:#fff;color:#102033}
 input[type=color]{padding:3px;height:42px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.themes{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.theme{border:1px solid #dbe5ef;border-radius:8px;padding:10px;display:flex;gap:8px;align-items:flex-start;cursor:pointer;background:#f8fafc}
-.theme:has(input:checked){background:#e8f7f2;border-color:#0f766e}
-.theme input{width:auto;margin-top:2px}
-.theme b{display:block;font-size:13px}
-.theme span{display:block;font-size:11px;color:#64748b;line-height:1.3;margin-top:2px}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.themes{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.theme{position:relative;border:1px solid #dbe5ef;border-radius:9px;padding:12px 10px 10px;display:grid;gap:9px;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 6px 16px rgba(15,23,42,.05);overflow:hidden}
+.theme::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:#cbd5e1}
+.theme.pushed{background:linear-gradient(180deg,#f0fdf4,#e8f7f2);border-color:#0f766e;box-shadow:0 8px 20px rgba(15,118,110,.13),inset 0 0 0 1px rgba(15,118,110,.12)}
+.theme.pushed::before{background:linear-gradient(90deg,#0f766e,#22c55e)}
+.theme-head{display:flex;gap:8px;align-items:flex-start}
+.theme input{display:none}
+.theme b{display:block;font-size:13px;color:#102033}
+.theme span{display:inline-flex;width:max-content;border-radius:999px;background:#e7eef5;color:#526176;padding:3px 7px;font-size:10px;line-height:1.1;margin-top:5px;font-weight:900}
+.theme.pushed span{background:#dcfce7;color:#166534}
+.mini-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mini-actions button{min-height:34px;padding:8px 9px;font-size:11px;border-radius:7px;box-shadow:none}
+.mini-actions .unpush{display:none;background:#fee2e2;color:#991b1b}
+.theme.pushed .mini-actions{grid-template-columns:1fr 1fr 1fr}
+.theme.pushed .mini-actions .unpush{display:block}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
 .actions.three{grid-template-columns:1fr 1fr 1fr}
+.actions.five{grid-template-columns:repeat(5,1fr)}
 button{border:0;border-radius:8px;padding:11px 12px;font-weight:1000;cursor:pointer;background:#123d57;color:#fff;min-height:42px}
 button.secondary{background:#e7eef5;color:#123d57}
 button.good{background:#0f766e}
@@ -34,51 +45,104 @@ button.blue{background:#0369a1}
 button.big{font-size:16px;min-height:50px}
 .urlbox{font-family:ui-monospace,Consolas,monospace;font-size:12px;min-height:74px;resize:vertical}
 .urlbox.sources{min-height:138px}
-.preview{height:620px;background:#08111f;border-radius:10px;overflow:hidden;border:1px solid #0f172a}
-iframe{width:100%;height:100%;border:0;background:transparent}
+.preview-panel{
+  position:fixed;
+  top:96px;
+  right:max(16px,calc((100vw - 1240px)/2 + 16px));
+  width:min(calc(100vw - 494px),794px);
+  height:auto;
+  overflow:visible;
+}
+
+.preview{
+  width:100%;
+  aspect-ratio:16/9;
+  background:#08111f;
+  border-radius:10px;
+  overflow:hidden;
+  border:1px solid #0f172a;
+  position:relative;
+}
+
+.preview iframe{
+  width:1280px;
+  height:720px;
+  border:0;
+  background:transparent;
+  transform-origin:top left;
+  position:absolute;
+  left:0;
+  top:0;
+}
 .hint{font-size:12px;color:#64748b;line-height:1.45}
+.manual-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.manual-grid .full{grid-column:1/-1}
+textarea.manual-input{min-height:68px;resize:vertical}
+.manual-help{font-size:11px;color:#64748b;line-height:1.35;margin-top:8px}
+
 .status{font-size:13px;font-weight:1000;color:#0f766e;margin-top:8px;min-height:22px;background:#e8f7f2;border:1px solid #b7eadb;border-radius:8px;padding:8px 10px}
 .status:empty{display:none}
 .mini-note{font-size:11px;color:#64748b;margin-top:8px;line-height:1.35}
-.quick{position:sticky;top:76px;z-index:4;background:#f8fafc;border:1px solid #dbe7f0;border-radius:10px;padding:10px;margin:12px 0}
+.quick{background:#f8fafc;border:1px solid #dbe7f0;border-radius:10px;padding:10px;margin:12px 0}
+.push-sticky{position:sticky;top:86px;z-index:20;background:#ffffff;border:1px solid #b7eadb;border-radius:10px;padding:8px;margin:12px 0 8px;box-shadow:0 8px 20px rgba(15,23,42,.12)}
+.push-sticky button{width:100%}
 .summary{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
 .chip{display:inline-flex;align-items:center;border-radius:999px;background:#e7eef5;color:#123d57;padding:5px 9px;font-size:11px;font-weight:1000}
 .chip.live{background:#dcfce7;color:#166534}
 .chip.warn{background:#fff7ed;color:#9a3412}
+.live-strip{position:sticky;top:0;z-index:6;background:#07111f;color:#fff;border-bottom:1px solid rgba(255,255,255,.12)}
+.live-strip-inner{max-width:1240px;margin:0 auto;padding:9px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.live-title{font-size:12px;font-weight:1000;color:#a7f3d0;text-transform:uppercase;margin-right:4px}
+.live-empty{font-size:12px;font-weight:900;color:#cbd5e1}
+.live-pill{display:inline-flex;align-items:center;gap:7px;border-radius:999px;background:#123d57;border:1px solid rgba(255,255,255,.16);padding:5px 5px 5px 10px;font-size:12px;font-weight:1000}
+.live-pill button{min-height:22px;padding:2px 7px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11px}
 details.fold{border:1px solid #dbe7f0;border-radius:10px;background:#f8fafc;margin-top:12px;padding:0 10px 10px}
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tools details.fold{margin-top:10px}
 details.fold summary{cursor:pointer;font-size:13px;font-weight:1000;color:#123d57;padding:11px 0;list-style:none}
 details.fold summary::-webkit-details-marker{display:none}
 details.fold summary::after{content:"+";float:right;color:#64748b}
 details.fold[open] summary::after{content:"-"}
-@media(max-width:900px){.wrap{grid-template-columns:1fr}.preview{height:520px}.themes{grid-template-columns:1fr}}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}.control-panel{max-height:none;overflow:visible}.preview-panel{position:static;width:auto;height:auto}.preview{height:520px}.themes{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="top">
   <h1>OBS Overlay Admin</h1>
-  <p>Select karo kaunsa overlay OBS me show/hide karna hai, preview me drag karke position set karo, phir ek saath OBS me push karo.</p>
+  <p>Preview Chrome browser jaisa normal ratio me chalega. Card drag/resize karo aur Push Live dabao.</p>
+</div>
+<div class="live-strip">
+  <div class="live-strip-inner">
+    <span class="live-title">Currently Live</span>
+    <span id="liveStrip" class="summary"></span>
+  </div>
 </div>
 
 <div class="wrap">
-  <div class="panel">
+  <div class="panel control-panel">
     <h2>Match & Style</h2>
     <div class="grid2">
       <div><label>Match ID</label><input id="matchId" value="liveMatch1"></div>
       <div><label>Mode</label><select id="mode"><option value="single">Single Theme</option><option value="custom">Custom Multi</option><option value="gallery">Gallery Preview</option></select></div>
     </div>
-    <div class="quick">
+    <div class="push-sticky">
       <button class="good big" onclick="applyLive()">Push Live</button>
+    </div>
+    <div class="quick">
       <div class="actions">
         <button class="secondary" onclick="refreshPreview()">Preview</button>
         <button class="secondary" onclick="pushHot('clear')">Clear Hot</button>
       </div>
       <div id="quickSummary" class="summary"></div>
+      <p class="hint"><b>Resize:</b> Preview me card ke bottom-right corner ko drag karke size badha/ghata sakte ho. Position aur size dono Push Live me save hoga.</p>
     </div>
-    <label>Single Theme</label>
-    <select id="singleTheme"></select>
     <div class="grid2">
       <div><label>Sponsor</label><input id="sponsor" value="Tech MCC"></div>
       <div><label>Event</label><input id="eventName" value="Live Cricket"></div>
+    </div>
+    <div style="display:none">
+      <label>Single Theme</label>
+      <select id="singleTheme"></select>
     </div>
     <details class="fold">
       <summary>Advanced Style</summary>
@@ -87,7 +151,6 @@ details.fold[open] summary::after{content:"-"}
       <div><label>Position</label><select id="pos"><option value="">Default</option><option value="top-left">Top Left</option><option value="top-right">Top Right</option><option value="bottom-left">Bottom Left</option><option value="bottom-right">Bottom Right</option><option value="center">Center</option></select></div>
     </div>
     <div class="grid2">
-      <div><label>Scale</label><input id="scale" type="number" min="0.5" max="1.8" step="0.1" value="1"></div>
       <div><label>Poll ms</label><input id="poll" type="number" min="1000" step="500" value="3000"></div>
     </div>
     <div class="grid2">
@@ -98,18 +161,53 @@ details.fold[open] summary::after{content:"-"}
     <select id="animation"><option value="slide">Slide</option><option value="fade">Fade</option><option value="zoom">Zoom</option><option value="none">None</option></select>
     <label><input id="debug" type="checkbox" style="width:auto"> Debug box show karo</label>
     <label><input id="autoTriggers" type="checkbox" style="width:auto" checked> Auto 4/6/Wicket trigger</label>
+    <label><input id="autoScenes" type="checkbox" style="width:auto"> Auto Scene Switch ON/OFF</label>
     </details>
 
-    <h2 style="margin-top:16px">Scene Presets</h2>
-    <div class="actions three">
-      <button class="blue" onclick="applyPreset('powerplay')">Powerplay</button>
-      <button class="blue" onclick="applyPreset('wicket')">Wicket</button>
-      <button class="blue" onclick="applyPreset('break')">Break</button>
+    <details class="fold" open>
+      <summary>Manual Text / Cards</summary>
+      <div class="manual-help">Blank chhodne par Firebase live score ka data show hoga. Jo field bharoge, wahi OBS overlay me manual override ho jayega.</div>
+      <div class="manual-grid">
+        <div class="full"><label>Live Status</label><input id="manualStatus" placeholder="LIVE / BREAK / DELAY / RESULT"></div>
+        <div class="full"><label>Manual Ticker Text</label><textarea id="manualTicker" class="manual-input" placeholder="Bottom ticker me manual message"></textarea></div>
+        <div class="full"><label>Manual Commentary</label><textarea id="manualCommentary" class="manual-input" placeholder="Commentary card ke liye text"></textarea></div>
+        <div class="full"><label>Match Summary / Result Text</label><textarea id="manualSummary" class="manual-input" placeholder="Example: MCC need 25 runs from 18 balls"></textarea></div>
+        <div><label>Last Wicket</label><input id="manualLastWicket" placeholder="Raza b Akash 18(14)"></div>
+        <div><label>Next Batter</label><input id="manualNextBatter" placeholder="Next batsman name"></div>
+        <div><label>Moment Player</label><input id="manualMomentPlayer" placeholder="Player name"></div>
+        <div><label>Moment Detail</label><input id="manualMomentDetail" placeholder="42 runs from 25 balls"></div>
+        <div><label>Powerplay Runs</label><input id="manualPPRuns" type="number" min="0" placeholder="52"></div>
+        <div><label>Powerplay Wickets</label><input id="manualPPWkts" type="number" min="0" placeholder="1"></div>
+        <div><label>Powerplay Overs</label><input id="manualPPOvers" placeholder="6.0"></div>
+        <div><label>Win % Batting Team</label><input id="manualWinProb" type="number" min="0" max="100" placeholder="65"></div>
+      </div>
+      <div class="actions">
+        <button class="good" onclick="pushManualOnly()">Push Manual</button>
+        <button class="secondary" onclick="clearManualFields()">Clear Manual</button>
+      </div>
+    </details>
+
+    <h2 style="margin-top:16px">One-Click Scenes</h2>
+    <div class="actions five">
+      <button class="good" onclick="pushScene('normal')">Normal</button>
+      <button class="hot" onclick="pushScene('wicket')">Wicket</button>
+      <button class="hot" onclick="pushScene('boundary')">Boundary</button>
+      <button class="blue" onclick="pushScene('chase')">Chase</button>
+      <button class="warn" onclick="pushScene('break')">Break</button>
     </div>
-    <div class="actions three">
-      <button class="blue" onclick="applyPreset('innings')">Innings</button>
-      <button class="blue" onclick="applyPreset('result')">Result</button>
-      <button class="blue" onclick="applyPreset('chase')">Chase</button>
+    <div class="actions five">
+      <button class="blue" onclick="pushScene('powerplay')">Powerplay</button>
+      <button class="good" onclick="pushScene('batting')">Batting</button>
+      <button class="warn" onclick="pushScene('bowling')">Bowling</button>
+      <button class="secondary" onclick="pushScene('summary')">Summary</button>
+      <button class="secondary" onclick="selectAll()">All Cards</button>
+    </div>
+    <div class="actions five">
+      <button class="blue" onclick="pushScene('prematch')">Pre Match</button>
+      <button class="blue" onclick="pushScene('result')">Result</button>
+      <button class="warn" onclick="pushScene('review')">Review</button>
+      <button class="secondary" onclick="pushScene('timeline')">Timeline</button>
+      <button class="good" onclick="toggleAutoScenes()">Auto Scene</button>
     </div>
 
     <h2 style="margin-top:16px">Hot Buttons</h2>
@@ -119,44 +217,65 @@ details.fold[open] summary::after{content:"-"}
       <button class="hot" onclick="pushHot('wicket')">WICKET</button>
     </div>
     <div class="actions three">
-      <button class="secondary" onclick="pushHot('target')">Target</button>
-      <button class="secondary" onclick="pushHot('player')">Batter</button>
-      <button class="secondary" onclick="pushHot('clear')">Clear</button>
+      <button class="blue" onclick="pushHot('fifty')">50</button>
+      <button class="blue" onclick="pushHot('hundred')">100</button>
+      <button class="warn" onclick="pushHot('review')">REVIEW</button>
+    </div>
+    <div class="actions three">
+      <button class="secondary" onclick="pushHot('powerplay')">POWERPLAY</button>
+      <button class="secondary" onclick="pushHot('timeout')">TIMEOUT</button>
+      <button class="secondary" onclick="pushHot('drinks')">DRINKS</button>
     </div>
 
     <h2 style="margin-top:16px">Show / Hide Overlays</h2>
     <div class="themes" id="themeList"></div>
-    <div class="actions">
-      <button class="secondary" onclick="selectAll()">Select All</button>
-      <button class="secondary" onclick="clearAll()">Clear</button>
+    <div class="tools">
+      <details class="fold">
+        <summary>Extra Tools</summary>
+        <div class="actions">
+          <button class="secondary" onclick="selectAll()">Select All</button>
+          <button class="secondary" onclick="clearAll()">Clear All</button>
+        </div>
+        <div class="actions">
+          <button class="secondary" onclick="pushHot('target')">Target Hot</button>
+          <button class="secondary" onclick="pushHot('player')">Batter Hot</button>
+        </div>
+        <div class="actions">
+          <button class="secondary" onclick="resetPositions()">Reset Positions</button>
+          <button class="secondary" onclick="disableLive()">Disable Control</button>
+        </div>
+      </details>
+      <details class="fold">
+        <summary>Save / Load</summary>
+        <div class="actions">
+          <button class="secondary" onclick="saveSettings()">Save Local</button>
+          <button class="warn" onclick="loadSettings()">Load</button>
+        </div>
+      </details>
     </div>
-    <div class="actions">
-      <button class="secondary" onclick="saveSettings()">Save Local</button>
-      <button class="warn" onclick="loadSettings()">Load</button>
-    </div>
-    <div class="actions">
-      <button class="secondary" onclick="disableLive()">Disable Control</button>
-      <button class="secondary" onclick="resetPositions()">Reset Positions</button>
-    </div>
+    <details class="fold">
+      <summary>OBS Links</summary>
+      <label>OBS URL</label>
+      <textarea id="urlOutput" class="urlbox" readonly></textarea>
+      <details class="fold">
+        <summary>Separate Source URLs</summary>
+        <textarea id="sourceUrls" class="urlbox sources" readonly></textarea>
+      </details>
+      <div class="actions">
+        <button onclick="copyUrl()">Copy URL</button>
+        <button class="secondary" onclick="openOverlay()">Open</button>
+      </div>
+      <div class="actions">
+        <button class="secondary" onclick="refreshPreview()">Refresh Preview</button>
+        <button class="secondary" onclick="resetDefaults()">Reset</button>
+      </div>
+      <p class="hint">YouTube Live ke liye OBS Browser Source size 1920 x 1080 rakho. 720p stream ke liye 1280 x 720 bhi chalega.</p>
+    </details>
   </div>
 
-  <div class="panel">
-    <h2>OBS URL</h2>
-    <textarea id="urlOutput" class="urlbox" readonly></textarea>
-    <details class="fold">
-      <summary>Separate Source URLs</summary>
-      <textarea id="sourceUrls" class="urlbox sources" readonly></textarea>
-    </details>
-    <div class="actions">
-      <button onclick="copyUrl()">Copy URL</button>
-      <button class="secondary" onclick="openOverlay()">Open</button>
-    </div>
-    <div class="actions">
-      <button class="secondary" onclick="refreshPreview()">Refresh Preview</button>
-      <button class="secondary" onclick="resetDefaults()">Reset</button>
-    </div>
+  <div class="panel preview-panel">
+    <h2>Preview</h2>
     <div id="status" class="status"></div>
-    <p class="hint">OBS me Browser Source add karo, URL paste karo. Width recommended 1280, Height 720. Transparent background supported hai.</p>
     <div class="preview"><iframe id="previewFrame" title="OBS preview"></iframe></div>
   </div>
 </div>
@@ -173,36 +292,91 @@ const THEMES=[
   ["commentary","Ball commentary"],
   ["wicket","Wicket animation"],
   ["target","Target need RRR"],
-  ["squad","Playing XI"],
   ["broadcast","TV broadcast pack"],
-  ["neon","Neon scorebug"],
   ["player","Player lower third"],
   ["partnership","Partnership panel"],
   ["rate","Chase equation"],
   ["slate","Match status slate"],
   ["sponsor","Sponsor bug"],
-  ["ticker","Bottom ticker"]
+  ["ticker","Bottom ticker"],
+  ["squad","Playing XI small"],
+  ["neon","Neon score pack"],
+  ["powerplay","Powerplay tracker"],
+  ["fow","Fall of wickets"],
+  ["lastwicket","Last wicket info"],
+  ["bowling","Bowling figures"],
+  ["winprob","Win probability"],
+  ["oversummary","Over summary"],
+  ["nextbatter","Next batter"],
+  ["summary","Match summary"],
+  ["rrmeter","Run rate meter"],
+  ["moment","Man of the moment"],
+  ["toss","Toss result"],
+  ["playingxi","Playing XI full screen"],
+  ["battercomp","Batter comparison"],
+  ["bowlercomp","Bowler comparison"],
+  ["timeline","Partnership timeline"],
+  ["result","Match result card"],
+  ["venue","Umpire / Venue card"],
+  ["inningsbreak","Innings break card"],
+  ["milestone","Milestone 50/100"],
+  ["review","Review / Decision pending"]
 ];
+const THEME_ICONS={
+  scorebug:"SB",lower:"LT",topbar:"TB",vertical:"VP",minimal:"MN",commentary:"CM",wicket:"WK",target:"TG",broadcast:"TV",player:"PL",partnership:"PS",rate:"RR",slate:"SL",sponsor:"SP",ticker:"TK",
+  squad:"XI",neon:"NE",powerplay:"PP",fow:"FW",lastwicket:"LW",bowling:"BW",winprob:"WP",oversummary:"OS",nextbatter:"NB",summary:"MS",rrmeter:"RM",moment:"MM",
+  toss:"TO",playingxi:"PX",battercomp:"BC",bowlercomp:"BO",timeline:"TL",result:"RS",venue:"VN",inningsbreak:"IB",milestone:"50",review:"RV"
+};
 const KEY="obs_overlay_admin_settings";
-const PRESETS={
-  powerplay:{mode:"custom",themes:["broadcast","ticker","sponsor"],eventName:"Powerplay",animation:"slide",pos:"",scale:"1"},
-  wicket:{mode:"custom",themes:["wicket","scorebug","ticker"],eventName:"Wicket",animation:"zoom",pos:"center",scale:"1"},
-  break:{mode:"custom",themes:["slate","sponsor","ticker"],eventName:"Break",animation:"fade",pos:"center",scale:"1"},
-  innings:{mode:"custom",themes:["slate","target","ticker"],eventName:"Innings Break",animation:"fade",pos:"center",scale:"1"},
-  result:{mode:"custom",themes:["slate","broadcast","sponsor"],eventName:"Result",animation:"zoom",pos:"center",scale:"1"},
-  chase:{mode:"custom",themes:["broadcast","rate","ticker"],eventName:"Chase",animation:"slide",pos:"",scale:"1"}
+const SCENES={
+  normal:{themes:["scorebug","ticker","sponsor"],eventName:"Live Cricket",hot:null},
+  wicket:{themes:["scorebug","lastwicket","fow","ticker"],eventName:"Wicket Moment",hot:"wicket"},
+  boundary:{themes:["scorebug","oversummary","battercomp","ticker","sponsor"],eventName:"Boundary",hot:"four"},
+  chase:{themes:["broadcast","rate","rrmeter","winprob","ticker"],eventName:"Chase Mode",hot:null},
+  break:{themes:["inningsbreak","summary","sponsor","ticker"],eventName:"Break",hot:null},
+  powerplay:{themes:["scorebug","powerplay","ticker"],eventName:"Powerplay",hot:null},
+  highlight:{themes:["player","partnership","moment","ticker"],eventName:"Player Highlight",hot:null},
+  prematch:{themes:["slate","toss","playingxi","venue","sponsor"],eventName:"Pre Match",hot:null},
+  result:{themes:["result","moment","summary","ticker"],eventName:"Result",hot:null},
+  review:{themes:["scorebug","review","ticker"],eventName:"Review",hot:"review"},
+  timeline:{themes:["timeline","fow","partnership","ticker"],eventName:"Timeline",hot:null}
 };
 let customPositions = {};
 let previewTimer = 0;
 const el=id=>document.getElementById(id);
+function uniqueId(){ return `${Date.now()}-${Math.random().toString(36).slice(2,8)}`; }
+function fitPreviewFrame(){
+  const box = el("previewFrame")?.parentElement;
+  const frame = el("previewFrame");
+  if(!box || !frame) return;
+
+  const scale = Math.min(
+    box.clientWidth / 1280,
+    box.clientHeight / 720
+  );
+
+  frame.style.width = "1280px";
+  frame.style.height = "720px";
+  frame.style.transformOrigin = "top left";
+  frame.style.transform = `scale(${scale})`;
+}
+
+window.addEventListener("resize", fitPreviewFrame);
 
 function init(){
   el("singleTheme").innerHTML=THEMES.map(([id,label])=>`<option value="${id}">${label}</option>`).join("");
   el("themeList").innerHTML=THEMES.map(([id,label])=>`
-    <label class="theme">
-      <input type="checkbox" class="themeCheck" value="${id}" ${["scorebug"].includes(id)?"checked":""}>
-      <div><b>${label}</b><span>${id}</span></div>
-    </label>
+    <div class="theme" data-theme-card="${id}">
+      <label class="theme-head">
+        <input type="checkbox" class="themeCheck" value="${id}" ${["scorebug"].includes(id)?"checked":""}>
+        <div><b>${THEME_ICONS[id] || "OV"} ${label}</b><span>${id}</span></div>
+      </label>
+      <div class="mini-actions">
+        <button class="secondary" type="button" onclick="previewTheme('${id}')">Preview</button>
+        <button class="good" type="button" onclick="pushTheme('${id}')">Push</button>
+        <button class="unpush" type="button" onclick="unpushTheme('${id}')">Unpush</button>
+      </div>
+    </div>
   `).join("");
   document.querySelectorAll("input,select").forEach(x=>x.addEventListener("input",update));
   window.addEventListener("message", (event) => {
@@ -215,8 +389,23 @@ function init(){
   loadSettings(false);
   update();
 }
+function toggleAutoScenes(){
+  el("autoScenes").checked = !el("autoScenes").checked;
+  update();
+  setStatus(el("autoScenes").checked ? "Auto Scene ON" : "Auto Scene OFF");
+}
 function selectedThemes(){
   return Array.from(document.querySelectorAll(".themeCheck:checked")).map(x=>x.value);
+}
+function setThemeChecked(theme, checked){
+  const box = document.querySelector(`.themeCheck[value="${theme}"]`);
+  if(box) box.checked = checked;
+}
+function updateThemeCards(){
+  const pushed = new Set(selectedThemes());
+  document.querySelectorAll("[data-theme-card]").forEach(card => {
+    card.classList.toggle("pushed", pushed.has(card.dataset.themeCard));
+  });
 }
 function baseUrl(){
   return new URL("obs.html", location.href);
@@ -232,14 +421,13 @@ function buildUrl(forPreview=false){
     url.searchParams.set("theme","gallery");
   } else if(mode==="custom"){
     url.searchParams.set("layout","custom");
-    url.searchParams.set("show",selectedThemes().join(",") || "scorebug");
+    url.searchParams.set("show",selectedThemes().join(",") || "__none__");
   } else {
     url.searchParams.set("theme",el("singleTheme").value);
   }
   url.searchParams.set("sponsor",el("sponsor").value.trim()||"Tech MCC");
   url.searchParams.set("event",el("eventName").value.trim()||"Live Cricket");
   url.searchParams.set("accent",el("accent").value.replace("#",""));
-  url.searchParams.set("scale",el("scale").value||"1");
   url.searchParams.set("poll",el("poll").value||"3000");
   if(el("pos").value) url.searchParams.set("pos",el("pos").value);
   if(el("debug").checked) url.searchParams.set("debug","1");
@@ -249,6 +437,8 @@ function buildUrl(forPreview=false){
   url.searchParams.set("z",el("zIndex").value||"20");
   url.searchParams.set("anim",el("animation").value||"slide");
   if(el("autoTriggers").checked) url.searchParams.set("auto","1");
+  if(el("autoScenes").checked) url.searchParams.set("autoScenes","1");
+  url.searchParams.set("hotDuration","2000");
   if(forPreview){
     url.searchParams.set("lock","1");
     url.searchParams.set("edit","1");
@@ -271,10 +461,23 @@ function updateSummary(){
     `<span class="chip live">${visibleCount} overlay</span>`,
     `<span class="chip">${mode}</span>`,
     `<span class="chip">${el("animation").value}</span>`,
-    el("autoTriggers").checked ? `<span class="chip live">auto on</span>` : `<span class="chip warn">auto off</span>`
+    el("autoTriggers").checked ? `<span class="chip live">hot auto on</span>` : `<span class="chip warn">hot auto off</span>`,
+    el("autoScenes").checked ? `<span class="chip live">scene auto on</span>` : `<span class="chip warn">scene auto off</span>`
   ];
   if(mode === "custom" && themes.length) labels.push(`<span class="chip">${themes.slice(0,3).join(", ")}${themes.length>3 ? " +" + (themes.length-3) : ""}</span>`);
   box.innerHTML = labels.join("");
+  updateThemeCards();
+  updateLiveStrip();
+}
+function updateLiveStrip(){
+  const strip = el("liveStrip");
+  if(!strip) return;
+  const themes = selectedThemes();
+  if(!themes.length){
+    strip.innerHTML = `<span class="live-empty">No overlay pushed</span>`;
+    return;
+  }
+  strip.innerHTML = themes.map(theme => `<span class="live-pill">${theme}<button type="button" onclick="unpushTheme('${theme}')">x</button></span>`).join("");
 }
 function sourceUrl(theme){
   const url=baseUrl();
@@ -283,16 +486,17 @@ function sourceUrl(theme){
   url.searchParams.set("sponsor",el("sponsor").value.trim()||"Tech MCC");
   url.searchParams.set("event",el("eventName").value.trim()||"Live Cricket");
   url.searchParams.set("accent",el("accent").value.replace("#",""));
-  url.searchParams.set("scale",el("scale").value||"1");
   url.searchParams.set("opacity",el("opacity").value||"1");
   url.searchParams.set("z",el("zIndex").value||"20");
   url.searchParams.set("anim",el("animation").value||"slide");
   if(el("autoTriggers").checked) url.searchParams.set("auto","1");
+  if(el("autoScenes").checked) url.searchParams.set("autoScenes","1");
+  url.searchParams.set("hotDuration","2000");
   url.searchParams.set("lock","1");
   return url.href;
 }
 function buildSourceUrls(){
-  return ["scorebug","ticker","sponsor","wicket","player","target"].map(theme=>`${theme}: ${sourceUrl(theme)}`).join("\n");
+  return ["scorebug","lower","topbar","vertical","minimal","commentary","ticker","sponsor","wicket","player","target","squad","neon","powerplay","fow","lastwicket","bowling","winprob","oversummary","nextbatter","summary","rrmeter","moment","toss","playingxi","battercomp","bowlercomp","timeline","result","venue","inningsbreak","milestone","review"].map(theme=>`${theme}: ${sourceUrl(theme)}`).join("\n");
 }
 function update(){
   updateUrl();
@@ -303,11 +507,13 @@ function schedulePreview(){
   previewTimer = setTimeout(() => {
     const url = buildUrl(true);
     if(el("previewFrame").src !== url) el("previewFrame").src = url;
+    setTimeout(fitPreviewFrame, 80);
   }, 220);
 }
 function refreshPreview(){
   updateUrl();
   el("previewFrame").src = `${buildUrl(true)}&previewRefresh=${Date.now()}`;
+  setTimeout(fitPreviewFrame, 80);
   setStatus("Preview refreshed");
 }
 function copyUrl(){
@@ -319,37 +525,137 @@ function copyUrl(){
 function openOverlay(){ window.open(el("urlOutput").value,"_blank"); }
 function selectAll(){ document.querySelectorAll(".themeCheck").forEach(x=>x.checked=true); update(); }
 function clearAll(){ document.querySelectorAll(".themeCheck").forEach(x=>x.checked=false); update(); }
-function resetPositions(){ customPositions={}; update(); saveSettings(false); setStatus("Positions reset"); }
-function applyPreset(name){
-  const preset=PRESETS[name];
-  if(!preset) return;
-  el("mode").value=preset.mode;
-  el("eventName").value=preset.eventName;
-  el("animation").value=preset.animation;
-  el("pos").value=preset.pos;
-  el("scale").value=preset.scale;
-  const chosen=new Set(preset.themes);
-  document.querySelectorAll(".themeCheck").forEach(x=>x.checked=chosen.has(x.value));
-  customPositions={};
+function resetPositions(){ customPositions={}; update(); saveSettings(false); setStatus("Positions & sizes reset"); }
+function previewTheme(theme){
+  el("mode").value="single";
+  el("singleTheme").value=theme;
   update();
-  setStatus(`${name} preset ready`);
+  setStatus(`${theme} preview`);
 }
+async function pushTheme(theme){
+  el("mode").value="custom";
+  setThemeChecked(theme,true);
+  update();
+  await applyLive();
+  setStatus(`${theme} pushed`);
+}
+async function unpushTheme(theme){
+  el("mode").value="custom";
+  setThemeChecked(theme,false);
+  update();
+  await applyLive(true);
+  setStatus(`${theme} removed`);
+}
+async function pushScene(name){
+  const scene = SCENES[name];
+  if(!scene) return;
+  el("mode").value="custom";
+  el("eventName").value=scene.eventName;
+  document.querySelectorAll(".themeCheck").forEach(x=>x.checked=scene.themes.includes(x.value));
+  update();
+  const payload=settingsPayload();
+  if(scene.hot){
+    const map={
+      four:{type:"four",text:"FOUR",sub:"Boundary"},
+      six:{type:"six",text:"SIX",sub:"Maximum"},
+      wicket:{type:"wicket",text:"WICKET",sub:"Big breakthrough"},
+      powerplay:{type:"powerplay",text:"POWERPLAY",sub:"Field restrictions active"}
+    };
+    payload.hotEvent={...(map[scene.hot]||map.four),id:uniqueId(),duration:2200};
+  }
+  saveSettings(false);
+  try{
+    await saveObsControl(payload.matchId || "liveMatch1", payload);
+    setStatus(`${name} scene pushed`);
+  }catch(e){
+    console.error(e);
+    setStatus("Scene push failed");
+  }
+}
+
+function manualPayload(){
+  const get = id => (el(id)?.value || "").trim();
+  const data = {};
+  const put = (key, value) => { if(value !== "") data[key] = value; };
+  put("liveStatus", get("manualStatus"));
+  put("tickerText", get("manualTicker"));
+  put("manualCommentary", get("manualCommentary"));
+  put("resultText", get("manualSummary"));
+  put("lastWicket", get("manualLastWicket"));
+  put("nextBatter", get("manualNextBatter"));
+  put("momentPlayer", get("manualMomentPlayer"));
+  put("momentDetail", get("manualMomentDetail"));
+  put("powerplayOvers", get("manualPPOvers"));
+  const ppRuns = get("manualPPRuns");
+  const ppWkts = get("manualPPWkts");
+  const winProb = get("manualWinProb");
+  if(ppRuns !== "") data.powerplayRuns = Number(ppRuns);
+  if(ppWkts !== "") data.powerplayWkts = Number(ppWkts);
+  if(winProb !== "") data.winProbBatting = Math.max(0, Math.min(100, Number(winProb)));
+  return data;
+}
+function fillManualFields(data={}){
+  const set = (id, value) => { if(el(id)) el(id).value = value ?? ""; };
+  set("manualStatus", data.liveStatus);
+  set("manualTicker", data.tickerText);
+  set("manualCommentary", data.manualCommentary);
+  set("manualSummary", data.resultText);
+  set("manualLastWicket", data.lastWicket);
+  set("manualNextBatter", data.nextBatter);
+  set("manualMomentPlayer", data.momentPlayer);
+  set("manualMomentDetail", data.momentDetail);
+  set("manualPPRuns", data.powerplayRuns);
+  set("manualPPWkts", data.powerplayWkts);
+  set("manualPPOvers", data.powerplayOvers);
+  set("manualWinProb", data.winProbBatting);
+}
+async function pushManualOnly(){
+  const payload = settingsPayload();
+  payload.manualUpdatedAt = Date.now();
+  saveSettings(false);
+  try{
+    await saveObsControl(payload.matchId || "liveMatch1", payload);
+    setStatus("Manual data pushed");
+  }catch(e){
+    console.error(e);
+    setStatus("Manual push failed");
+  }
+}
+async function clearManualFields(){
+  ["manualStatus","manualTicker","manualCommentary","manualSummary","manualLastWicket","manualNextBatter","manualMomentPlayer","manualMomentDetail","manualPPRuns","manualPPWkts","manualPPOvers","manualWinProb"].forEach(id=>{ if(el(id)) el(id).value=""; });
+  const payload = settingsPayload();
+  payload.manualData = {};
+  payload.manualUpdatedAt = Date.now();
+  saveSettings(false);
+  try{
+    await saveObsControl(payload.matchId || "liveMatch1", payload);
+    setStatus("Manual data cleared");
+  }catch(e){
+    console.error(e);
+    setStatus("Manual clear failed");
+  }
+}
+
 function settingsPayload(){
   return {
     enabled:true,
     matchId:el("matchId").value,mode:el("mode").value,singleTheme:el("singleTheme").value,
     sponsor:el("sponsor").value,eventName:el("eventName").value,accent:el("accent").value,
-    pos:el("pos").value,scale:el("scale").value,poll:el("poll").value,debug:el("debug").checked,
-    opacity:el("opacity").value,zIndex:el("zIndex").value,animation:el("animation").value,autoTriggers:el("autoTriggers").checked,
+    pos:el("pos").value,poll:el("poll").value,debug:el("debug").checked,
+    opacity:el("opacity").value,zIndex:el("zIndex").value,animation:el("animation").value,autoTriggers:el("autoTriggers").checked,autoScenes:el("autoScenes").checked,
     themes:selectedThemes(),
-    positions:customPositions
+    positions:customPositions,
+    manualData:manualPayload()
   };
 }
 function saveSettings(show=true){ localStorage.setItem(KEY,JSON.stringify(settingsPayload())); if(show) setStatus("Settings saved"); }
-async function applyLive(){
+async function applyLive(allowEmpty=false){
   const payload=settingsPayload();
-  if(payload.mode === "custom" && !payload.themes.length){
+  if(payload.mode === "custom" && !payload.themes.length && !allowEmpty){
     payload.themes = ["scorebug"];
+  }
+  if(payload.mode === "custom" && !payload.themes.length && allowEmpty){
+    payload.show = "__none__";
   }
   saveSettings(false);
   try{
@@ -368,12 +674,19 @@ async function pushHot(type){
     wicket:{type:"wicket",text:"WICKET",sub:"Big breakthrough"},
     target:{type:"target",text:"TARGET",sub:"Chase equation"},
     player:{type:"player",text:"BATTER",sub:"On strike stats"},
+    fifty:{type:"fifty",text:"FIFTY",sub:"Half century"},
+    hundred:{type:"hundred",text:"HUNDRED",sub:"Century"},
+    review:{type:"review",text:"REVIEW",sub:"Decision under review"},
+    powerplay:{type:"powerplay",text:"POWERPLAY",sub:"Field restrictions active"},
+    timeout:{type:"timeout",text:"TIMEOUT",sub:"Strategic break"},
+    drinks:{type:"drinks",text:"DRINKS",sub:"Short break"},
+    partnership:{type:"partnership",text:"PARTNERSHIP",sub:"Big stand"},
+    fifty:{type:"four",text:"50",sub:"Half Century"},
+    hundred:{type:"six",text:"100",sub:"Century"},
+    review:{type:"wicket",text:"REVIEW",sub:"Decision Pending"},
     clear:{type:"clear",text:"",sub:""}
   };
-  payload.hotEvent={...(map[type]||map.clear),id:Date.now(),duration:4500};
-  if(type==="target" && !payload.themes.includes("target")) payload.themes.push("target");
-  if(type==="player" && !payload.themes.includes("player")) payload.themes.push("player");
-  if(type==="wicket" && !payload.themes.includes("wicket")) payload.themes.push("wicket");
+  payload.hotEvent={...(map[type]||map.clear),id:uniqueId(),duration: type === "clear" ? 500 : 2200};
   try{
     await saveObsControl(payload.matchId || "liveMatch1", payload);
     setStatus(type==="clear" ? "Hot overlay cleared" : `${payload.hotEvent.text} pushed`);
@@ -382,6 +695,7 @@ async function pushHot(type){
     setStatus("Hot push failed");
   }
 }
+
 async function disableLive(){
   const matchId=el("matchId").value.trim()||"liveMatch1";
   try{
@@ -396,7 +710,9 @@ function loadSettings(show=true){
     ["matchId","mode","singleTheme","sponsor","eventName","accent","pos","scale","poll","opacity","zIndex","animation"].forEach(id=>{ if(data[id]!==undefined) el(id).value=data[id]; });
     el("debug").checked=!!data.debug;
     el("autoTriggers").checked=data.autoTriggers!==false;
+    el("autoScenes").checked=!!data.autoScenes;
     customPositions = data.positions || {};
+    fillManualFields(data.manualData || {});
     const chosen=new Set(data.themes||[]);
     document.querySelectorAll(".themeCheck").forEach(x=>x.checked=chosen.has(x.value));
     update();
@@ -408,7 +724,7 @@ function resetDefaults(){
   location.reload();
 }
 function setStatus(text){ el("status").innerText=text; clearTimeout(window._st); window._st=setTimeout(()=>el("status").innerText="",1800); }
-Object.assign(window,{selectAll,clearAll,saveSettings,loadSettings,resetDefaults,refreshPreview,copyUrl,openOverlay,applyLive,disableLive,applyPreset,pushHot});
+Object.assign(window,{selectAll,clearAll,saveSettings,loadSettings,resetDefaults,refreshPreview,copyUrl,openOverlay,applyLive,disableLive,pushHot,previewTheme,pushTheme,unpushTheme,pushScene,pushManualOnly,clearManualFields});
 window.resetPositions = resetPositions;
 init();
 </script>
