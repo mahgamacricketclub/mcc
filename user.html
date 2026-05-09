@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Cricket Score</title>
+  <link rel="stylesheet" href="./css/user.css">
+</head>
+<body>
+  <header class="score-header">
+    <div class="viewer">👁 <span id="viewerCount">0</span></div>
+    <div class="series"><span id="matchTitle">Live Match</span><button id="followBtn">Follow</button></div>
+    <div class="match-card">
+      <div class="team"><div id="logoA" class="logo">-</div><h2 id="teamA">-</h2><div id="scoreA" class="score">--/--<small>(--)</small></div></div>
+      <div id="centerStatus" class="center live">Live</div>
+      <div class="team right"><div id="logoB" class="logo">-</div><h2 id="teamB">-</h2><div id="scoreB" class="score muted-score">Yet to bat</div></div>
+    </div>
+    <div id="liveInfo" class="live-info">Waiting for match data</div>
+    <div class="details"><div id="battingInfo">-</div><div id="bowlingInfo">-</div></div>
+  </header>
+  <section class="over-strip"><div id="overStrip" class="over-track"><div class="over-row">Over - <span class="ball">-</span></div></div></section>
+  <nav class="tabs"><button class="tab active" data-tab="overview">Overview</button><button class="tab" data-tab="scorecard">Scorecard</button><button class="tab" data-tab="commentary">Commentary</button><button class="tab" data-tab="stats">Stats</button><button class="tab" data-tab="players">Players</button><button class="tab" data-tab="matches">Matches</button><button class="tab" data-tab="league">League</button></nav>
+  <main>
+    <section id="overview" class="content active"><div class="card"><h3>Overview</h3><div class="stat"><span>Score</span><b id="overviewScore">--</b></div><div class="stat"><span>Toss</span><b id="overviewToss">-</b></div><div class="stat"><span>CRR</span><b id="overviewCRR">0.00</b></div><div class="stat"><span>Extras</span><b id="overviewExtras">0</b></div><div class="stat"><span>Last Wicket</span><b id="overviewLastWicket">-</b></div></div><div class="quick-grid"><div><span>Target</span><b id="target">-</b></div><div><span>Need</span><b id="need">-</b></div><div><span>RRR</span><b id="rrr">-</b></div><div><span>Partnership</span><b id="partnership">0 (0)</b></div></div><div class="card"><h3>Highlights</h3><div id="highlights"></div></div></section>
+    <section id="scorecard" class="content"><div class="team-tabs"><button id="scoreTab1" class="active">Team 1</button><button id="scoreTab2">Team 2</button></div><div id="scorecardBody"></div></section>
+    <section id="commentary" class="content"><div class="card"><h3>Ball by Ball</h3><div id="commentaryList"></div></div></section>
+    <section id="stats" class="content"><div class="quick-grid stats"><div><span>Runs</span><b id="statRuns">0</b></div><div><span>Wickets</span><b id="statWkts">0</b></div><div><span>Overs</span><b id="statOvers">0.0</b></div><div><span>Projected</span><b id="statProjected">0</b></div><div><span>4s</span><b id="statFours">0</b></div><div><span>6s</span><b id="statSixes">0</b></div><div><span>Top Batter</span><b id="statTopBatter">-</b></div><div><span>Best Bowler</span><b id="statBestBowler">-</b></div></div><div class="card"><h3>Fall of Wickets</h3><div id="fowList"></div></div></section>
+    <section id="players" class="content"><div class="card"><h3>Players</h3><div id="playersList" class="players-grid"></div></div></section>
+    <section id="matches" class="content"><div class="card"><h3>Matches</h3><div id="matchesList"></div></div></section>
+    <section id="league" class="content"><div class="card"><h3 id="leagueTitle">League</h3><div class="quick-grid"><div><span>Teams</span><b id="leagueTeams">0</b></div><div><span>Matches</span><b id="leagueMatches">0</b></div><div><span>Completed</span><b id="leagueDone">0</b></div><div><span>Pending</span><b id="leaguePending">0</b></div></div></div><div class="card"><h3>Points Table</h3><table><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>NRR</th></tr></thead><tbody id="pointsTable"></tbody></table></div><div class="card"><h3>Schedule</h3><div id="leagueSchedule"></div></div></section>
+  </main>
+  <div id="modal" class="modal"><div class="modal-card"><button id="modalClose">×</button><div id="modalBody"></div></div></div>
+  <script type="module" src="./js/user.js"></script>
+</body>
+</html>

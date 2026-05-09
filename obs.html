@@ -1,1034 +1,113 @@
 <!DOCTYPE html>
 <html lang="hi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OBS Live Cricket Overlays</title>
-<style>
-*{box-sizing:border-box}
-:root{
-  --green:#15b981;
-  --lime:#bef264;
-  --red:#ef4444;
-  --amber:#f59e0b;
-  --blue:#38bdf8;
-  --ink:#07111f;
-  --paper:#ffffff;
-  --glass:rgba(10,18,32,.82);
-  --accent:#15b981;
-  --overlay-opacity:1;
-  --overlay-z:20;
-}
-
-html,body{margin:0;width:100%;min-height:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:transparent;color:#fff;overflow:hidden}
-body.gallery{overflow:auto;background:#0b1220;padding:24px}
-.stage{width:100vw;height:100vh;position:relative;background:transparent}
-.gallery .stage{width:auto;height:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px}
-.obs-card{position:absolute;z-index:var(--overlay-z);opacity:var(--overlay-opacity);filter:drop-shadow(0 12px 26px rgba(0,0,0,.38));transform-origin:top left;}
-body:not(.overlay-ready) .obs-card{visibility:hidden!important}
-body.overlay-ready .obs-card{visibility:visible}
-.anim-slide .obs-card:not(.hidden){animation:obsSlide .34s ease-out both}
-.anim-fade .obs-card:not(.hidden){animation:obsFade .34s ease-out both}
-.anim-zoom .obs-card:not(.hidden){animation:obsZoom .34s cubic-bezier(.2,.8,.2,1) both}
-.anim-none .obs-card{animation:none!important}
-@keyframes obsSlide{from{opacity:0;translate:0 18px}to{opacity:var(--overlay-opacity);translate:0 0}}
-@keyframes obsFade{from{opacity:0}to{opacity:var(--overlay-opacity)}}
-@keyframes obsZoom{from{opacity:0;scale:.86}to{opacity:var(--overlay-opacity);scale:1}}
-.gallery .obs-card{position:relative;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important;min-height:112px}
-.hidden{display:none!important}
-.muted{opacity:.72}
-.debug{position:fixed;left:10px;top:10px;z-index:9999;background:#fff;color:#111827;border:2px solid #ef4444;border-radius:8px;padding:8px 10px;font:700 12px/1.35 ui-monospace,Consolas,monospace;max-width:520px;display:none;white-space:pre-wrap}
-.debug.show{display:block}
-.team-logo{width:42px;height:42px;border-radius:50%;background:#fff;color:#0b1220;display:grid;place-items:center;font-weight:1000;overflow:hidden;flex:0 0 auto;border:2px solid rgba(255,255,255,.86)}
-.team-logo img{width:100%;height:100%;object-fit:cover}
-.team-name{font-weight:1000;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.score-main{font-size:38px;font-weight:1000;line-height:1}
-.score-small{font-size:14px;font-weight:900;opacity:.86}
-.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 10px;font-size:11px;font-weight:1000;text-transform:uppercase}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 0 0 rgba(239,68,68,.5);animation:pulse 1.5s infinite}
-@keyframes pulse{70%{box-shadow:0 0 0 9px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
-
-.scorebug{left:28px;bottom:28px;width:min(680px,calc(100vw - 56px));background:linear-gradient(135deg,#07111f,#102a43 64%,#075e66);border:1px solid rgba(255,255,255,.22);border-radius:14px;overflow:hidden}
-.scorebug .topline{height:9px;background:linear-gradient(90deg,var(--green),var(--blue),var(--lime))}
-.scorebug .topline{background:linear-gradient(90deg,var(--accent),var(--blue),var(--lime))}
-.scorebug .body{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:14px 16px}
-.scorebug .batters{display:grid;gap:3px;font-size:13px;font-weight:800;color:#d9f99d}
-.scorebug .center{text-align:center}
-.scorebug .meta{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:7px}
-.scorebug .right{text-align:right;display:grid;gap:5px}
-.scorebug .stats{grid-column:1/-1;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:0 12px 12px}
-
-.lower{left:50%;bottom:34px;transform:translateX(-50%);width:min(920px,calc(100vw - 64px));background:rgba(255,255,255,.94);color:#08111f;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,.5)}
-.lower .bar{height:8px;background:linear-gradient(90deg,#16a34a,#0ea5e9,#facc15)}
-.lower .row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:18px;padding:13px 18px}
-.lower .team{display:flex;align-items:center;gap:10px;min-width:0}
-.lower .team:last-child{justify-content:flex-end}
-.lower .score-main{color:#0f766e}
-.lower .status{background:#0b1220;color:#fff;border-radius:999px;padding:8px 14px;font-weight:1000;text-align:center}
-
-.topbar{left:0;top:0;width:100vw;background:linear-gradient(90deg,#06131f,#10344e,#06131f);border-bottom:1px solid rgba(255,255,255,.16);display:grid;grid-template-columns:auto 1fr auto;gap:16px;align-items:center;padding:10px 22px}
-.topbar .score-main{font-size:30px;color:#dcfce7}
-.topbar .ticker{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:900}
-
-.vertical{right:24px;top:80px;width:270px;background:linear-gradient(180deg,#0f172a,#123d57);border:1px solid rgba(255,255,255,.22);border-radius:18px;overflow:hidden}
-.vertical .head{padding:12px 14px;background:rgba(255,255,255,.08);display:flex;justify-content:space-between;align-items:center}
-.vertical .big{padding:18px 14px;text-align:center}
-.vertical .big .score-main{font-size:46px}
-.vertical .list{display:grid;gap:8px;padding:0 14px 16px}
-.vertical .line{display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,.12);padding-top:8px;font-size:13px;font-weight:800}
-
-.minimal{left:24px;top:24px;background:#fff;color:#0f172a;border-radius:999px;display:flex;align-items:center;gap:12px;padding:9px 14px;border:2px solid #111827}
-.minimal .score-main{font-size:24px;color:#15803d}
-.minimal .team-logo{width:30px;height:30px;border-color:#0f172a}
-
-.commentary{left:50%;bottom:160px;transform:translateX(-50%);width:min(760px,calc(100vw - 80px));background:rgba(4,12,24,.88);border-left:6px solid var(--amber);border-radius:10px;padding:14px 18px}
-.commentary .ball{color:#fef08a;font-weight:1000;margin-bottom:4px}
-.commentary .text{font-size:20px;font-weight:900;line-height:1.25}
-
-.wicket{left:50%;top:50%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 80px));background:linear-gradient(135deg,#7f1d1d,#dc2626,#f97316);border:2px solid rgba(255,255,255,.5);border-radius:18px;text-align:center;padding:28px;animation:flash 1s infinite}
-.wicket .title{font-size:66px;font-weight:1000;line-height:.95}
-.wicket .sub{font-size:24px;font-weight:900;margin-top:10px}
-@keyframes flash{50%{filter:brightness(1.18)}}
-
-.target{right:28px;bottom:28px;width:330px;background:rgba(255,255,255,.94);color:#0f172a;border-radius:12px;padding:16px;border-top:8px solid #0ea5e9}
-.target .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
-.target .box{background:#eaf6fb;border-radius:8px;padding:10px;text-align:center}
-.target .box span{display:block;font-size:11px;font-weight:1000;color:#475569}
-.target .box b{font-size:22px;color:#0f766e}
-
-.squad{left:28px;top:92px;width:390px;background:rgba(7,17,31,.88);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px}
-.squad .title{font-size:13px;text-transform:uppercase;color:#a7f3d0;font-weight:1000}
-.squad .players{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
-.squad .player{background:rgba(255,255,255,.08);border-radius:8px;padding:8px;font-weight:800;font-size:13px}
-
-.broadcast{left:50%;bottom:36px;transform:translateX(-50%);width:min(1040px,calc(100vw - 56px));display:grid;grid-template-columns:1.2fr auto 1.2fr;align-items:stretch;overflow:hidden;border-radius:16px;background:#08111f;border:1px solid rgba(255,255,255,.24)}
-.broadcast .side{display:flex;align-items:center;gap:12px;padding:14px 18px;min-width:0;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02))}
-.broadcast .side:last-child{justify-content:flex-end;text-align:right}
-.broadcast .middle{display:grid;place-items:center;min-width:210px;background:linear-gradient(135deg,var(--accent),#0ea5e9);color:#02111c;padding:10px 18px}
-.broadcast .score-main{font-size:44px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.18)}
-.broadcast .event{font-size:11px;font-weight:1000;text-transform:uppercase;opacity:.78}
-
-.neon{left:34px;bottom:34px;width:min(760px,calc(100vw - 68px));background:rgba(1,10,18,.9);border:1px solid color-mix(in srgb,var(--accent),white 20%);border-radius:18px;overflow:hidden;box-shadow:0 0 22px color-mix(in srgb,var(--accent),transparent 62%)}
-.neon::before{content:"";display:block;height:3px;background:linear-gradient(90deg,var(--accent),transparent)}
-.neon .wrap{display:grid;grid-template-columns:auto 1fr auto;gap:14px;align-items:center;padding:14px 18px}
-.neon .score-main{font-size:42px;color:var(--accent)}
-.neon .tag{font-size:11px;color:#b7f7e3;text-transform:uppercase;font-weight:1000}
-
-.player-lower{left:50%;bottom:42px;transform:translateX(-50%);width:min(820px,calc(100vw - 64px));display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;background:rgba(255,255,255,.96);color:#0f172a;border-radius:12px;padding:12px 16px;border-left:8px solid var(--accent)}
-.player-lower .name{font-size:26px;font-weight:1000}
-.player-lower .numbers{display:flex;gap:10px;font-weight:1000}
-.player-lower .numbers span{background:#e8f7f2;border-radius:8px;padding:8px 10px}
-
-.partnership{left:28px;top:28px;width:360px;background:rgba(15,23,42,.9);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px}
-.partnership .title{font-size:12px;text-transform:uppercase;color:#bbf7d0;font-weight:1000}
-.partnership .big{font-size:42px;font-weight:1000;margin:4px 0}
-.partnership .names{font-weight:900;color:#e0f2fe}
-
-.rate{right:28px;top:28px;width:360px;background:linear-gradient(135deg,#fff,#e0f2fe);color:#0f172a;border-radius:14px;padding:14px;border-bottom:7px solid var(--accent)}
-.rate .title{font-size:12px;text-transform:uppercase;font-weight:1000;color:#0369a1}
-.rate .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
-.rate .cell{background:#fff;border:1px solid #cfe7f2;border-radius:10px;text-align:center;padding:9px}
-.rate .cell span{display:block;font-size:10px;text-transform:uppercase;font-weight:1000;color:#64748b}
-.rate .cell b{font-size:25px;color:#0f766e}
-
-.status-slate{left:50%;top:50%;transform:translate(-50%,-50%);width:min(780px,calc(100vw - 90px));background:rgba(5,13,26,.92);border:1px solid rgba(255,255,255,.25);border-radius:22px;padding:28px;text-align:center}
-.status-slate .event{font-size:14px;text-transform:uppercase;font-weight:1000;color:#a7f3d0}
-.status-slate .title{font-size:44px;font-weight:1000;margin:8px 0}
-.status-slate .subtitle{font-size:22px;font-weight:900;color:#dbeafe}
-
-.sponsor-bug{right:26px;top:24px;min-width:170px;background:#fff;color:#0f172a;border-radius:12px;padding:10px 13px;text-align:center;border-bottom:5px solid var(--accent)}
-.sponsor-bug .small{font-size:10px;text-transform:uppercase;font-weight:1000;color:#64748b}
-.sponsor-bug .brand{font-size:18px;font-weight:1000}
-
-.tickerbar{left:0;bottom:0;width:100vw;height:44px;background:#07111f;border-top:1px solid rgba(255,255,255,.16);overflow:hidden;display:flex;align-items:center}
-.tickerbar .label{height:100%;display:grid;place-items:center;background:var(--accent);color:#02111c;font-weight:1000;padding:0 18px;z-index:2}
-.tickerbar .marquee{white-space:nowrap;font-weight:900;padding-left:18px;animation:marquee 22s linear infinite}
-@keyframes marquee{from{transform:translateX(100vw)}to{transform:translateX(-100%)}}
-.hot-alert{left:50%;top:42%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 96px));text-align:center;border-radius:20px;padding:32px 28px;background:linear-gradient(135deg,#052e2b,var(--accent),#0ea5e9);border:2px solid rgba(255,255,255,.58);box-shadow:0 22px 70px rgba(0,0,0,.36);animation:hotIn .28s cubic-bezier(.2,.9,.2,1) both}
-.hot-alert::before{content:"";position:absolute;inset:7px;border:1px solid rgba(255,255,255,.36);border-radius:15px;pointer-events:none}
-.hot-alert .hot-title{font-size:86px;font-weight:1000;line-height:.9;text-shadow:0 4px 0 rgba(0,0,0,.18);letter-spacing:0}
-.hot-alert .hot-sub{font-size:24px;font-weight:1000;margin-top:10px;text-transform:uppercase}
-.hot-alert.four{background:linear-gradient(135deg,#064e3b,#16a34a,#bef264);color:#fff}
-.hot-alert.six{background:linear-gradient(135deg,#312e81,#7c3aed,#f0abfc);color:#fff}
-.hot-alert.wicket{background:linear-gradient(135deg,#7f1d1d,#dc2626,#f97316);color:#fff}
-.hot-alert.hiding{animation:hotOut .24s ease-in both}
-@keyframes hotIn{0%{opacity:0;scale:.78;filter:blur(7px)}70%{opacity:1;scale:1.04;filter:blur(0)}100%{opacity:1;scale:1}}
-@keyframes hotOut{to{opacity:0;scale:.94;filter:blur(4px)}}
-.pos-top-left{left:24px!important;right:auto!important;top:24px!important;bottom:auto!important;transform:none!important}
-.pos-top-right{right:24px!important;left:auto!important;top:24px!important;bottom:auto!important;transform:none!important}
-.pos-bottom-left{left:24px!important;right:auto!important;bottom:24px!important;top:auto!important;transform:none!important}
-.pos-bottom-right{right:24px!important;left:auto!important;bottom:24px!important;top:auto!important;transform:none!important}
-.pos-center{left:50%!important;top:50%!important;right:auto!important;bottom:auto!important;transform:translate(-50%,-50%)!important}
-
-.mini-over{display:flex;gap:5px;flex-wrap:wrap;justify-content:center}
-.ball-dot{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;background:#e5edf6;color:#10243d;font-size:11px;font-weight:1000}
-.ball-dot.boundary{background:#16a34a;color:#fff}
-.ball-dot.wicket-ball{background:#dc2626;color:#fff}
-
-
-/* Extra stylish cricket cards */
-.powerplay{left:28px;top:28px;width:280px;background:linear-gradient(135deg,#1d4ed8,#0ea5e9);border-radius:16px;padding:16px;color:#fff;border:1px solid rgba(255,255,255,.24);box-shadow:0 12px 30px rgba(0,0,0,.28)}
-.powerplay .title,.fow .title,.lastwicket-card .title,.bowling-card .title,.winprob .title,.oversummary .title,.nextbatter .title,.summary-card .title,.rrmeter .title,.moment .title{font-size:12px;font-weight:1000;text-transform:uppercase;letter-spacing:.4px}
-.powerplay .big{font-size:42px;font-weight:1000;margin-top:6px}.powerplay .sub{font-size:16px;font-weight:900}
-.fow{right:28px;top:28px;width:340px;background:rgba(7,17,31,.92);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px}.fow .title{color:#fca5a5}.fow .list{margin-top:8px;font-size:18px;font-weight:900;line-height:1.5}
-.lastwicket-card{right:28px;top:170px;width:340px;background:linear-gradient(135deg,#7f1d1d,#dc2626);border-radius:14px;padding:16px;color:#fff;border:1px solid rgba(255,255,255,.22)}.lastwicket-card .name{font-size:24px;font-weight:1000;margin-top:6px}.lastwicket-card .sub{font-size:15px;font-weight:800;margin-top:4px}
-.bowling-card{right:28px;bottom:170px;width:340px;background:rgba(255,255,255,.95);color:#0f172a;border-radius:14px;padding:16px;border-left:7px solid var(--accent)}.bowling-card .title{color:#0369a1}.bowling-card .row{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-weight:900}.bowling-card .row b{text-align:right}
-.winprob{left:50%;top:28px;transform:translateX(-50%);width:min(650px,calc(100vw - 80px));background:rgba(255,255,255,.96);color:#0f172a;border-radius:14px;padding:16px;border:1px solid rgba(255,255,255,.5)}.winprob .title{color:#0369a1}.winprob .bar{margin-top:10px;height:18px;border-radius:999px;overflow:hidden;display:flex;background:#e5e7eb}.winprob .leftbar{background:#22c55e;height:100%;width:50%}.winprob .rightbar{background:#ef4444;height:100%;width:50%}.winprob .labels{display:flex;justify-content:space-between;margin-top:8px;font-weight:1000;font-size:13px}
-.oversummary{left:28px;bottom:170px;width:360px;background:rgba(7,17,31,.9);border:1px solid rgba(255,255,255,.2);border-radius:14px;padding:14px}.oversummary .title{color:#a7f3d0}.oversummary .balls{margin-top:10px;font-size:24px;font-weight:1000}.oversummary .sub{margin-top:6px;font-size:14px;font-weight:900;color:#cbd5e1}
-.nextbatter{left:28px;top:170px;width:320px;background:linear-gradient(135deg,#312e81,#7c3aed);border-radius:14px;padding:16px;color:#fff;border:1px solid rgba(255,255,255,.22)}.nextbatter .name{font-size:26px;font-weight:1000;margin-top:8px}.nextbatter .sub{margin-top:6px;font-size:14px;font-weight:800}
-.summary-card{left:50%;top:110px;transform:translateX(-50%);width:min(800px,calc(100vw - 90px));background:rgba(5,13,26,.92);border:1px solid rgba(255,255,255,.2);border-radius:16px;padding:18px;text-align:center}.summary-card .title{color:#a7f3d0}.summary-card .summary-text{margin-top:10px;font-size:24px;font-weight:1000;line-height:1.35}
-.rrmeter{right:28px;bottom:28px;width:320px;background:linear-gradient(135deg,#fff,#e0f2fe);color:#0f172a;border-radius:14px;padding:14px;border-bottom:7px solid var(--accent)}.rrmeter .title{color:#0369a1}.rrmeter .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.rrmeter .cell{background:#fff;border:1px solid #cfe7f2;border-radius:10px;padding:10px;text-align:center}.rrmeter .cell span{display:block;font-size:10px;text-transform:uppercase;font-weight:1000;color:#64748b}.rrmeter .cell b{font-size:24px;color:#0f766e}
-.moment{left:50%;bottom:100px;transform:translateX(-50%);width:min(760px,calc(100vw - 90px));background:linear-gradient(135deg,#052e2b,#16a34a,#0ea5e9);border-radius:16px;padding:20px;color:#fff;text-align:center;border:2px solid rgba(255,255,255,.35)}.moment .name{font-size:32px;font-weight:1000;margin-top:10px}.moment .sub{font-size:16px;font-weight:900;margin-top:6px}
-.hot-alert.fifty,.hot-alert.hundred{background:linear-gradient(135deg,#92400e,#f59e0b,#fde68a);color:#fff}.hot-alert.review{background:linear-gradient(135deg,#0f172a,#0369a1,#38bdf8);color:#fff}.hot-alert.powerplay{background:linear-gradient(135deg,#1d4ed8,#0ea5e9,#a7f3d0);color:#fff}.hot-alert.timeout,.hot-alert.drinks{background:linear-gradient(135deg,#334155,#64748b,#cbd5e1);color:#fff}.hot-alert.target,.hot-alert.player,.hot-alert.partnership{background:linear-gradient(135deg,#052e2b,var(--accent),#0ea5e9);color:#fff}
-
-
-/* Professional Broadcast Pack */
-.pro-card{background:rgba(7,17,31,.92);border:1px solid rgba(255,255,255,.22);border-radius:18px;padding:18px;color:#fff;box-shadow:0 16px 44px rgba(0,0,0,.34)}
-.pro-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#a7f3d0;font-weight:1000;margin-bottom:8px}
-.pro-big{font-size:32px;font-weight:1000;line-height:1.08}
-.pro-sub{font-size:15px;font-weight:900;color:#dbeafe;margin-top:6px;line-height:1.35}
-.pro-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
-.pro-box{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:10px}
-.pro-box span{display:block;font-size:10px;text-transform:uppercase;font-weight:1000;color:#bae6fd}
-.pro-box b{font-size:20px;color:#fff}
-.toss-card{left:42px;top:90px;width:420px;background:linear-gradient(135deg,#0f172a,#075985)}
-.playingxi-card{left:50%;top:70px;transform:translateX(-50%);width:min(980px,calc(100vw - 120px));background:rgba(5,13,26,.94)}
-.playingxi-card .xi-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}
-.playingxi-card .xi-list{display:grid;grid-template-columns:1fr 1fr;gap:7px;font-size:13px;font-weight:850}
-.playingxi-card .xi-list div{background:rgba(255,255,255,.08);border-radius:9px;padding:7px 9px}
-.battercomp-card{left:50%;bottom:120px;transform:translateX(-50%);width:min(860px,calc(100vw - 100px));background:linear-gradient(135deg,#052e2b,#0f766e,#0ea5e9)}
-.bowlercomp-card{right:42px;top:90px;width:420px;background:linear-gradient(135deg,#312e81,#7c3aed)}
-.timeline-card{left:42px;bottom:110px;width:520px;background:rgba(5,13,26,.92)}
-.timeline-card .timeline{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.timeline-card .timeline span{background:#e0f2fe;color:#0f172a;border-radius:999px;padding:7px 10px;font-size:12px;font-weight:1000}
-.result-card{left:50%;top:50%;transform:translate(-50%,-50%);width:min(900px,calc(100vw - 120px));text-align:center;background:linear-gradient(135deg,#064e3b,#16a34a,#0ea5e9);border:2px solid rgba(255,255,255,.45)}
-.result-card .pro-big{font-size:48px}
-.venue-card{right:42px;bottom:110px;width:440px;background:linear-gradient(135deg,#fff,#e0f2fe);color:#0f172a;border-bottom:8px solid var(--accent)}
-.venue-card .pro-title{color:#0369a1}.venue-card .pro-sub{color:#334155}.venue-card .pro-big{color:#0f172a}
-.inningsbreak-card{left:50%;top:50%;transform:translate(-50%,-50%);width:min(820px,calc(100vw - 120px));text-align:center;background:linear-gradient(135deg,#0f172a,#334155)}
-.inningsbreak-card .pro-big{font-size:46px}
-.milestone-card{left:50%;top:38%;transform:translate(-50%,-50%);width:min(780px,calc(100vw - 120px));text-align:center;background:linear-gradient(135deg,#78350f,#f59e0b,#facc15);color:#111827;border:2px solid rgba(255,255,255,.48)}
-.milestone-card .pro-title{color:#111827}.milestone-card .pro-big{font-size:60px;color:#111827}.milestone-card .pro-sub{color:#111827}
-.review-card{left:50%;top:38%;transform:translate(-50%,-50%);width:min(760px,calc(100vw - 120px));text-align:center;background:linear-gradient(135deg,#1e1b4b,#4338ca,#38bdf8);border:2px solid rgba(255,255,255,.45)}
-.review-card .pro-big{font-size:52px}
-
-.setup-help{max-width:980px;margin:0 auto 18px;color:#dbeafe}
-.setup-help h1{margin:0 0 8px;font-size:28px}
-.setup-help code{background:#111827;padding:3px 6px;border-radius:5px;color:#fde68a}
-body.edit-mode,body.edit-mode *{user-select:none}
-body.edit-mode .obs-card:not(.hidden){cursor:move;outline:2px dashed rgba(255,255,255,.45);outline-offset:4px;touch-action:none}
-body.edit-mode .obs-card.dragging{outline-color:var(--accent);filter:drop-shadow(0 16px 32px rgba(0,0,0,.5)) brightness(1.06)}
-
-@media (max-width:700px){
-  .scorebug,.lower,.topbar,.vertical,.target,.squad,.commentary{width:calc(100vw - 24px);left:12px;right:auto;transform:none}
-  .topbar{grid-template-columns:1fr;gap:4px}
-  .vertical{top:70px}
-  .lower .row{grid-template-columns:1fr;gap:8px;text-align:center}
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MCC OBS Live Score Overlay</title>
+  <link rel="stylesheet" href="./css/obs.css" />
 </head>
 <body>
-<div id="debugBox" class="debug"></div>
-<div id="galleryHelp" class="setup-help hidden">
-  <h1>OBS Live Cricket Overlays</h1>
-  <div>OBS Browser Source URL examples:</div>
-  <div><code>obs.html?match=liveMatch1&theme=scorebug</code></div>
-  <div><code>obs.html?match=liveMatch1&theme=lower</code></div>
-  <div><code>obs.html?match=liveMatch1&theme=topbar</code></div>
-  <div><code>obs.html?match=liveMatch1&theme=commentary</code></div>
-  <div><code>obs.html?match=liveMatch1&theme=broadcast&sponsor=Tech%20MCC&event=Final</code></div>
-</div>
-<div class="stage" id="stage">
-  <div class="obs-card scorebug" data-theme="scorebug">
-    <div class="topline"></div>
-    <div class="body">
-      <div class="team-logo" data-logo="batting">-</div>
-      <div class="center">
-        <div class="team-name" data-match-title>Live Match</div>
-        <div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span> <span class="score-small">(<span data-overs>0.0</span>)</span></div>
-        <div class="meta"><span class="pill"><span class="dot"></span><span data-status>LIVE</span></span><span class="pill" data-crr>CRR 0.00</span><span class="pill" data-target-line>Target -</span></div>
+  <main id="obsRoot" class="obs-root theme-gold" data-card="scorebug">
+    <div id="connectionBadge" class="connection-badge">CONNECTING</div>
+
+    <section id="scorebug" class="obs-card scorebug card-scorebug">
+      <div class="scorebug-top">
+        <div class="team-pill team-left"><span id="bugTeamA">-</span></div>
+        <div class="live-pill" id="bugStatus">LIVE</div>
+        <div class="team-pill team-right"><span id="bugTeamB">-</span></div>
       </div>
-      <div class="right">
-        <div class="batters"><span data-striker>-</span><span data-nonstriker>-</span></div>
-        <div class="mini-over" data-over></div>
+      <div class="scorebug-main">
+        <div class="team-score"><b id="bugScoreA">--</b><small id="bugSubA">1st</small></div>
+        <div class="main-score"><span id="bugMainScore">0/0</span><small id="bugOvers">0.0 ov</small></div>
+        <div class="team-score right"><b id="bugScoreB">Yet</b><small id="bugSubB">2nd</small></div>
       </div>
-      <div class="stats"><span class="pill" data-bowler-spell>Bowler 0.0-0-0-0</span><span class="pill" data-last5>Last 5: -</span><span class="pill" data-projected>Proj -</span></div>
-    </div>
-  </div>
-
-  <div class="obs-card lower" data-theme="lower">
-    <div class="bar"></div>
-    <div class="row">
-      <div class="team"><div class="team-logo" data-logo="batting"></div><div><div class="team-name" data-batting-team>-</div><div class="muted" data-striker>-</div></div></div>
-      <div class="status"><div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span></div><div class="score-small"><span data-overs>0.0</span> overs</div></div>
-      <div class="team"><div><div class="team-name" data-bowling-team>-</div><div class="muted" data-bowler>-</div></div><div class="team-logo" data-logo="bowling"></div></div>
-    </div>
-  </div>
-
-  <div class="obs-card topbar" data-theme="topbar">
-    <div class="pill"><span class="dot"></span><span data-status>LIVE</span></div>
-    <div class="ticker"><span data-match-title>Live Match</span> | <span data-batting-team>-</span> batting | <span data-bowler>-</span></div>
-    <div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span> <span class="score-small">(<span data-overs>0.0</span>)</span></div>
-  </div>
-
-  <div class="obs-card vertical" data-theme="vertical">
-    <div class="head"><b data-batting-team>-</b><span class="pill"><span data-status>LIVE</span></span></div>
-    <div class="big"><div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span></div><div class="score-small"><span data-overs>0.0</span> overs</div></div>
-    <div class="list">
-      <div class="line"><span>Striker</span><b data-striker>-</b></div>
-      <div class="line"><span>Non striker</span><b data-nonstriker>-</b></div>
-      <div class="line"><span>Bowler</span><b data-bowler>-</b></div>
-      <div class="line"><span>This over</span><b data-over-text>-</b></div>
-    </div>
-  </div>
-
-  <div class="obs-card minimal" data-theme="minimal">
-    <div class="team-logo" data-logo="batting"></div>
-    <b data-batting-team>-</b>
-    <div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span></div>
-    <span class="score-small">(<span data-overs>0.0</span>)</span>
-  </div>
-
-  <div class="obs-card commentary" data-theme="commentary">
-    <div class="ball" data-last-ball>Live Commentary</div>
-    <div class="text" data-last-comment>Waiting for ball update...</div>
-  </div>
-
-  <div class="obs-card wicket hidden" data-theme="wicket">
-    <div class="title">WICKET!</div>
-    <div class="sub" data-last-wicket>-</div>
-  </div>
-
-  <div class="obs-card target" data-theme="target">
-    <div class="team-name" data-match-title>Live Match</div>
-    <div class="grid">
-      <div class="box"><span>Target</span><b data-target>-</b></div>
-      <div class="box"><span>Need</span><b data-need>-</b></div>
-      <div class="box"><span>RRR</span><b data-rrr>-</b></div>
-    </div>
-  </div>
-
-  <div class="obs-card squad" data-theme="squad">
-    <div class="title">Playing XI</div>
-    <div class="team-name" data-batting-team>-</div>
-    <div class="players" data-players></div>
-  </div>
-
-  <div class="obs-card broadcast" data-theme="broadcast">
-    <div class="side"><div class="team-logo" data-logo="batting"></div><div><div class="event" data-event>Live Cricket</div><div class="team-name" data-batting-team>-</div><div class="muted" data-striker>-</div></div></div>
-    <div class="middle"><div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span></div><div class="score-small"><span data-overs>0.0</span> overs · <span data-status>LIVE</span></div></div>
-    <div class="side"><div><div class="event">Bowling</div><div class="team-name" data-bowling-team>-</div><div class="muted" data-bowler>-</div></div><div class="team-logo" data-logo="bowling"></div></div>
-  </div>
-
-  <div class="obs-card neon" data-theme="neon">
-    <div class="wrap"><div class="team-logo" data-logo="batting"></div><div><div class="tag" data-event>Live Cricket</div><div class="team-name" data-match-title>Live Match</div><div class="muted"><span data-striker>-</span> · <span data-bowler>-</span></div></div><div class="score-main"><span data-runs>0</span>/<span data-wkts>0</span></div></div>
-  </div>
-
-  <div class="obs-card player-lower" data-theme="player">
-    <div class="team-logo" data-logo="batting"></div>
-    <div><div class="muted">On Strike</div><div class="name" data-player-name>-</div></div>
-    <div class="numbers"><span data-player-runs>0</span><span data-player-balls>0b</span><span data-player-sr>SR 0</span></div>
-  </div>
-
-  <div class="obs-card partnership" data-theme="partnership">
-    <div class="title">Partnership</div>
-    <div class="big"><span data-partnership>0 (0)</span></div>
-    <div class="names"><span data-striker>-</span> / <span data-nonstriker>-</span></div>
-  </div>
-
-  <div class="obs-card rate" data-theme="rate">
-    <div class="title">Chase Equation</div>
-    <div class="grid">
-      <div class="cell"><span>Target</span><b data-target>-</b></div>
-      <div class="cell"><span>Need</span><b data-need>-</b></div>
-      <div class="cell"><span>RRR</span><b data-rrr>-</b></div>
-    </div>
-  </div>
-
-  <div class="obs-card status-slate" data-theme="slate">
-    <div class="event" data-event>Live Cricket</div>
-    <div class="title" data-match-title>Live Match</div>
-    <div class="subtitle"><span data-batting-team>-</span> vs <span data-bowling-team>-</span></div>
-    <div style="margin-top:14px"><span class="pill"><span class="dot"></span><span data-status>LIVE</span></span></div>
-  </div>
-
-  <div class="obs-card sponsor-bug" data-theme="sponsor">
-    <div class="small">Presented by</div>
-    <div class="brand" data-sponsor>Tech MCC</div>
-  </div>
-
-  <div class="obs-card tickerbar" data-theme="ticker">
-    <div class="label" data-status>LIVE</div>
-    <div class="marquee" data-ticker>Waiting for live match...</div>
-  </div>
-  <div class="obs-card powerplay" data-theme="powerplay">
-    <div class="title">POWERPLAY</div>
-    <div class="big" data-powerplay-score>0/0</div>
-    <div class="sub"><span data-powerplay-overs>0.0</span> overs</div>
-  </div>
-
-  <div class="obs-card fow" data-theme="fow">
-    <div class="title">Fall of Wickets</div>
-    <div class="list" data-fow-list>No wicket yet</div>
-  </div>
-
-  <div class="obs-card lastwicket-card" data-theme="lastwicket">
-    <div class="title">Last Wicket</div>
-    <div class="name" data-last-wicket-player>-</div>
-    <div class="sub" data-last-wicket-info>-</div>
-  </div>
-
-  <div class="obs-card bowling-card" data-theme="bowling">
-    <div class="title">Bowling Figures</div>
-    <div class="row"><span>Bowler</span><b data-bowler-name>-</b></div>
-    <div class="row"><span>Figures</span><b data-bowler-figures>0.0-0-0-0</b></div>
-    <div class="row"><span>Economy</span><b data-bowler-econ>0.00</b></div>
-  </div>
-
-  <div class="obs-card winprob" data-theme="winprob">
-    <div class="title">Win Probability</div>
-    <div class="bar"><div class="leftbar" data-win-left-style></div><div class="rightbar" data-win-right-style></div></div>
-    <div class="labels"><span data-win-batting>Team A 50%</span><span data-win-bowling>Team B 50%</span></div>
-  </div>
-
-  <div class="obs-card oversummary" data-theme="oversummary">
-    <div class="title">This Over</div>
-    <div class="balls" data-over-summary-balls>-</div>
-    <div class="sub" data-over-summary-runs>Runs: 0</div>
-  </div>
-
-  <div class="obs-card nextbatter" data-theme="nextbatter">
-    <div class="title">Next Batter</div>
-    <div class="name" data-next-batter>-</div>
-    <div class="sub">Ready to bat</div>
-  </div>
-
-  <div class="obs-card summary-card" data-theme="summary">
-    <div class="title">Match Summary</div>
-    <div class="summary-text" data-match-summary>Waiting for live update...</div>
-  </div>
-
-  <div class="obs-card rrmeter" data-theme="rrmeter">
-    <div class="title">Run Rate Meter</div>
-    <div class="grid"><div class="cell"><span>CRR</span><b data-meter-crr>0.00</b></div><div class="cell"><span>RRR</span><b data-meter-rrr>-</b></div></div>
-  </div>
-
-  <div class="obs-card moment" data-theme="moment">
-    <div class="title">Man of the Moment</div>
-    <div class="name" data-moment-player>-</div>
-    <div class="sub" data-moment-detail>Outstanding performance</div>
-  </div>
-
-  <div class="obs-card pro-card toss-card" data-theme="toss">
-    <div class="pro-title">Toss Result</div>
-    <div class="pro-big" data-toss-title>Toss Update</div>
-    <div class="pro-sub" data-toss-detail>-</div>
-  </div>
-
-  <div class="obs-card pro-card playingxi-card" data-theme="playingxi">
-    <div class="pro-title">Playing XI</div>
-    <div class="pro-big"><span data-batting-team>-</span> vs <span data-bowling-team>-</span></div>
-    <div class="xi-grid">
-      <div><div class="pro-title" data-batting-team>-</div><div class="xi-list" data-xi-batting></div></div>
-      <div><div class="pro-title" data-bowling-team>-</div><div class="xi-list" data-xi-bowling></div></div>
-    </div>
-  </div>
-
-  <div class="obs-card pro-card battercomp-card" data-theme="battercomp">
-    <div class="pro-title">Batter Comparison</div>
-    <div class="pro-grid">
-      <div class="pro-box"><span>Striker</span><b data-comp-striker>-</b><div class="pro-sub" data-comp-striker-stat>0(0)</div></div>
-      <div class="pro-box"><span>Non Striker</span><b data-comp-nonstriker>-</b><div class="pro-sub" data-comp-nonstriker-stat>0(0)</div></div>
-    </div>
-  </div>
-
-  <div class="obs-card pro-card bowlercomp-card" data-theme="bowlercomp">
-    <div class="pro-title">Bowler Comparison</div>
-    <div class="pro-grid">
-      <div class="pro-box"><span>Current</span><b data-current-bowler>-</b><div class="pro-sub" data-current-bowler-stat>0.0-0-0</div></div>
-      <div class="pro-box"><span>Previous</span><b data-previous-bowler>-</b><div class="pro-sub" data-previous-bowler-stat>-</div></div>
-    </div>
-  </div>
-
-  <div class="obs-card pro-card timeline-card" data-theme="timeline">
-    <div class="pro-title">Partnership / Wicket Timeline</div>
-    <div class="pro-big" data-timeline-title>Timeline</div>
-    <div class="timeline" data-timeline-list><span>No timeline</span></div>
-  </div>
-
-  <div class="obs-card pro-card result-card" data-theme="result">
-    <div class="pro-title">Match Result</div>
-    <div class="pro-big" data-result-title>Result Pending</div>
-    <div class="pro-sub" data-result-detail>Waiting for result...</div>
-  </div>
-
-  <div class="obs-card pro-card venue-card" data-theme="venue">
-    <div class="pro-title">Match Info</div>
-    <div class="pro-big" data-venue-title>Venue</div>
-    <div class="pro-sub" data-venue-detail>-</div>
-  </div>
-
-  <div class="obs-card pro-card inningsbreak-card" data-theme="inningsbreak">
-    <div class="pro-title">Innings Break</div>
-    <div class="pro-big" data-innings-title>Innings Break</div>
-    <div class="pro-sub" data-innings-detail>Second innings coming up...</div>
-  </div>
-
-  <div class="obs-card pro-card milestone-card" data-theme="milestone">
-    <div class="pro-title">Milestone</div>
-    <div class="pro-big" data-milestone-title>50</div>
-    <div class="pro-sub" data-milestone-detail>Excellent batting!</div>
-  </div>
-
-  <div class="obs-card pro-card review-card" data-theme="review">
-    <div class="pro-title">Decision Review</div>
-    <div class="pro-big" data-review-title>REVIEW</div>
-    <div class="pro-sub" data-review-detail>Decision pending...</div>
-  </div>
-  <div class="obs-card hot-alert hidden" data-theme="hot">
-    <div class="hot-title" data-hot-title></div>
-    <div class="hot-sub" data-hot-sub></div>
-  </div>
-</div>
-
-<script type="module">
-import { listenLiveMatch, fetchLiveMatchRest, listenObsControl } from "./js/firebase-live.js";
-
-const params = new URLSearchParams(location.search);
-const MATCH_ID = (params.get("match") || "liveMatch1").trim();
-const THEME = (params.get("theme") || "gallery").trim().toLowerCase();
-const LAYOUT = (params.get("layout") || "").trim().toLowerCase();
-const SHOW = (params.get("show") || "").trim().toLowerCase();
-const SPONSOR = (params.get("sponsor") || "Tech MCC").trim();
-const EVENT = (params.get("event") || "Live Cricket").trim();
-const ACCENT = (params.get("accent") || "").trim();
-const POS = (params.get("pos") || "").trim().toLowerCase();
-const DEBUG = params.get("debug") === "1";
-const POLL_MS = Math.max(1000, Number(params.get("poll") || 3000));
-const LOCK_CONTROL = params.get("lock") === "1";
-const EDIT_MODE = params.get("edit") === "1";
-const PREVIEW_MODE = params.get("preview") === "1";
-const POSITIONS = parsePositions(params.get("positions") || "");
-const OPACITY = Number(params.get("opacity") || 1);
-const Z_INDEX = Number(params.get("z") || 20);
-const ANIMATION = (params.get("anim") || "slide").trim().toLowerCase();
-const AUTO_TRIGGERS = params.get("auto") !== "0";
-const AUTO_SCENES = params.get("autoScenes") === "1";
-const HOT_PARAM = (params.get("hot") || "").trim().toLowerCase();
-const HOT_TEXT = (params.get("hotText") || "").trim();
-const HOT_DURATION = Math.min(Math.max(Number(params.get("hotDuration") || 2000), 500), 5000);
-const stage = document.getElementById("stage");
-const galleryHelp = document.getElementById("galleryHelp");
-const debugBox = document.getElementById("debugBox");
-const state = { data: null };
-let controlManualData = {};
-let lastControlHotId = "";
-
-if(ACCENT) document.documentElement.style.setProperty("--accent", ACCENT.startsWith("#") ? ACCENT : `#${ACCENT}`);
-if(Number.isFinite(OPACITY)) document.documentElement.style.setProperty("--overlay-opacity", String(Math.min(Math.max(OPACITY,.15),1)));
-if(Number.isFinite(Z_INDEX)) document.documentElement.style.setProperty("--overlay-z", String(Math.min(Math.max(Z_INDEX,1),9999)));
-document.body.classList.add(`anim-${["slide","fade","zoom","none"].includes(ANIMATION) ? ANIMATION : "slide"}`);
-if(EDIT_MODE) document.body.classList.add("edit-mode");
-
-if (LAYOUT === "custom" && SHOW) {
-  const active = new Set(SHOW === "__none__" ? [] : SHOW.split(",").map(x=>x.trim()).filter(Boolean));
-  document.querySelectorAll("[data-theme]").forEach(el => {
-    if (!active.has(el.dataset.theme)) el.classList.add("hidden");
-    else {
-      el.classList.remove("hidden");
-      if(POS) el.classList.add(`pos-${POS}`);
-    }
-  });
-} else if (THEME === "gallery") {
-  document.body.classList.add("gallery");
-  galleryHelp.classList.remove("hidden");
-} else {
-  document.querySelectorAll("[data-theme]").forEach(el => {
-    if (el.dataset.theme !== THEME) el.classList.add("hidden");
-    else {
-      el.classList.remove("hidden");
-      if(POS) el.classList.add(`pos-${POS}`);
-    }
-  });
-}
-applyCustomPositions(POSITIONS);
-document.body.classList.add("overlay-ready");
-if(EDIT_MODE) enableDragEditor();
-if(HOT_PARAM) showHotEvent(HOT_PARAM, HOT_TEXT || HOT_PARAM.toUpperCase(), "", HOT_DURATION);
-
-function parsePositions(value){
-  if(!value) return {};
-  try{
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  }catch(error){
-    try{
-      const parsed = JSON.parse(decodeURIComponent(value));
-      return parsed && typeof parsed === "object" ? parsed : {};
-    }catch(secondError){
-      return {};
-    }
-  }
-}
-function parseCardScale(card){
-  const raw = card?.style?.scale || getComputedStyle(card).scale || getComputedStyle(document.documentElement).getPropertyValue("--scale") || "1";
-  if(!raw || raw === "none") return 1;
-  const first = String(raw).trim().split(/\s+/)[0];
-  const n = Number(first);
-  return Number.isFinite(n) && n > 0 ? n : 1;
-}
-function clampScale(value){
-  return Math.min(Math.max(Number(value) || 1, .55), 2.4);
-}
-function applyCustomPositions(positions){
-  Object.entries(positions || {}).forEach(([theme, point]) => {
-    const card = Array.from(document.querySelectorAll("[data-theme]")).find(item => item.dataset.theme === theme);
-    if(!card || !point) return;
-    card.style.right = "auto";
-    card.style.bottom = "auto";
-    card.style.transform = "none";
-    const rect = card.getBoundingClientRect();
-    const maxX = Math.max(window.innerWidth - rect.width, 0);
-    const maxY = Math.max(window.innerHeight - rect.height, 0);
-    let x;
-    let y;
-    if(point.px !== undefined) x = Number(point.px) * maxX;
-    else if(point.nx !== undefined) x = Number(point.nx) * maxX;
-    else x = Number(point.x || 0);
-    if(point.py !== undefined) y = Number(point.py) * maxY;
-    else if(point.ny !== undefined) y = Number(point.ny) * maxY;
-    else y = Number(point.y || 0);
-    if(!Number.isFinite(x) || !Number.isFinite(y)) return;
-    card.style.left = `${Math.min(Math.max(0, x), maxX)}px`;
-    card.style.top = `${Math.min(Math.max(0, y), maxY)}px`;
-  });
-}
-
-function currentPositions(){
-  const out = {};
-
-  document.querySelectorAll("[data-theme]:not(.hidden)").forEach(card => {
-    const rect = card.getBoundingClientRect();
-    const maxX = Math.max(window.innerWidth - rect.width, 1);
-    const maxY = Math.max(window.innerHeight - rect.height, 1);
-
-    const x = Math.min(Math.max(0, rect.left), maxX);
-    const y = Math.min(Math.max(0, rect.top), maxY);
-
-    out[card.dataset.theme] = {
-      x: Math.round(x),
-      y: Math.round(y),
-      px: Number((x / maxX).toFixed(5)),
-      py: Number((y / maxY).toFixed(5))
-    };
-  });
-
-  return out;
-}
-function enableDragEditor(){
-  let active = null;
-
-  const sendPositions = () => {
-    window.parent?.postMessage({
-      type:"obs-positions",
-      positions: currentPositions()
-    }, "*");
-  };
-
-  document.addEventListener("pointerdown", (event) => {
-    const card = event.target.closest("[data-theme]");
-    if(!card || card.classList.contains("hidden")) return;
-
-    const rect = card.getBoundingClientRect();
-
-    card.style.left = `${rect.left}px`;
-    card.style.top = `${rect.top}px`;
-    card.style.right = "auto";
-    card.style.bottom = "auto";
-    card.style.transform = "none";
-
-    active = {
-      card,
-      dx: event.clientX - rect.left,
-      dy: event.clientY - rect.top
-    };
-
-    card.classList.add("dragging");
-    card.setPointerCapture?.(event.pointerId);
-    event.preventDefault();
-  });
-
-  document.addEventListener("pointermove", (event) => {
-    if(!active) return;
-
-    const card = active.card;
-    const rect = card.getBoundingClientRect();
-
-    const maxX = Math.max(window.innerWidth - rect.width, 0);
-    const maxY = Math.max(window.innerHeight - rect.height, 0);
-
-    card.style.left = `${Math.min(Math.max(0, event.clientX - active.dx), maxX)}px`;
-    card.style.top = `${Math.min(Math.max(0, event.clientY - active.dy), maxY)}px`;
-
-    sendPositions();
-    event.preventDefault();
-  });
-
-  document.addEventListener("pointerup", (event) => {
-    if(!active) return;
-
-    active.card.releasePointerCapture?.(event.pointerId);
-    active.card.classList.remove("dragging");
-
-    sendPositions();
-    active = null;
-    event.preventDefault();
-  });
-
-  window.addEventListener("pointercancel", () => {
-    if(active) active.card.classList.remove("dragging");
-    active = null;
-  });
-}
-
-function debug(message){
-  if(!DEBUG) return;
-  debugBox.classList.add("show");
-  debugBox.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-}
-window.addEventListener("error", (event)=>debug(`JS error: ${event.message}`));
-window.addEventListener("unhandledrejection", (event)=>debug(`Promise error: ${event.reason?.message || event.reason}`));
-
-function safe(value){ return String(value == null ? "" : value); }
-function overText(balls){ const n=Number(balls||0); return Math.floor(n/6)+"."+(n%6); }
-function shortName(name){ return safe(name || "-").split(/\s+/).map(x=>x[0]).join("").slice(0,3).toUpperCase() || "-"; }
-function teamMeta(data, team){ return data?.teamInfo?.[team] || {}; }
-function logoHtml(data, team){
-  const meta = teamMeta(data, team);
-  return meta.logo ? `<img src="${meta.logo}" alt="">` : shortName(meta.shortName || team);
-}
-function ballClass(ball){
-  const txt=String(ball||"");
-  if(/W/i.test(txt)) return "wicket-ball";
-  if(txt==="4" || txt==="6") return "boundary";
-  return "";
-}
-function setText(selector, value){
-  document.querySelectorAll(selector).forEach(el => { el.textContent = safe(value); });
-}
-function setHtml(selector, value){
-  document.querySelectorAll(selector).forEach(el => { el.innerHTML = value; });
-}
-function currentBatters(data){
-  const striker = Number(data?.striker || 1) === 1 ? data?.bat1 : data?.bat2;
-  const non = Number(data?.striker || 1) === 1 ? data?.bat2 : data?.bat1;
-  return { striker: striker || {}, non: non || {} };
-}
-function computeChase(data){
-  const target = Number(data?.target || 0);
-  if(!target) return { target:"-", need:"-", rrr:"-" };
-  const maxBalls = Number(data?.totalOvers || 20) * 6;
-  const remBalls = Math.max(maxBalls - Number(data?.balls || 0), 0);
-  const need = Math.max(target - Number(data?.runs || 0), 0);
-  return { target, need, rrr: remBalls ? ((need * 6) / remBalls).toFixed(2) : (need ? "INF" : "0.00") };
-}
-function lastFiveText(data){
-  const events = Array.isArray(data?.ballEvents) ? data.ballEvents : [];
-  const recent = events.slice(-30);
-  if(!recent.length) return "-";
-  const runs = recent.reduce((sum,item)=>sum + Number(item?.runs || item?.batRuns || 0), 0);
-  const wkts = recent.filter(item=>item?.wicket || /W/i.test(String(item?.result || item?.label || ""))).length;
-  return `${runs}/${wkts}`;
-}
-function projectedScore(data){
-  const balls = Number(data?.balls || 0);
-  const totalOvers = Number(data?.totalOvers || 20);
-  if(!balls || !totalOvers) return "-";
-  return Math.round((Number(data?.runs || 0) / balls) * totalOvers * 6);
-}
-function bowlerSpell(data){
-  const bowler = data?.bowler || {};
-  const name = bowler.name || data?.currentBowler || "Bowler";
-  const balls = Number(bowler.balls || bowler.b || 0);
-  const overs = balls ? overText(balls) : (bowler.overs || "0.0");
-  return `${name} ${overs}-${Number(bowler.maidens || 0)}-${Number(bowler.runs || bowler.r || 0)}-${Number(bowler.wickets || bowler.w || 0)}`;
-}
-function normalizePlayers(data, team){
-  const players = data?.teams?.[team];
-  if(Array.isArray(players)) return players;
-  if(typeof players === "string") return players.split(/\s+/).filter(Boolean);
-  return [];
-}
-let lastAutoKey = "";
-let hotTimer = 0;
-function showHotEvent(type, title, sub="", duration=2000){
-  const card = document.querySelector('[data-theme="hot"]');
-  if(!card) return;
-  if(type === "clear"){
-    card.classList.add("hidden");
-    return;
-  }
-  card.className = `obs-card hot-alert ${type || ""}`;
-  setText("[data-hot-title]", title || String(type || "").toUpperCase());
-  setText("[data-hot-sub]", sub || EVENT);
-  clearTimeout(hotTimer);
-  hotTimer = setTimeout(()=>{
-    card.classList.add("hiding");
-    setTimeout(()=>card.classList.add("hidden"), 260);
-  }, duration);
-}
-function autoTrigger(data, over, last){
-  if(!AUTO_TRIGGERS || PREVIEW_MODE) return;
-  const ball = String(over[over.length-1] || last.ball || "");
-  const text = String(last.text || "");
-  const key = `${data?.balls || 0}:${ball}:${text}`;
-  if(!ball || key === lastAutoKey) return;
-  lastAutoKey = key;
-  if(/W/i.test(ball) || /wicket/i.test(text)) showHotEvent("wicket","WICKET",data.lastWicket || "Big breakthrough",2000);
-  else if(ball === "6") showHotEvent("six","SIX","Maximum",2000);
-  else if(ball === "4") showHotEvent("four","FOUR","Boundary",2000);
-}
-
-function mergeManualData(data){
-  const manual = controlManualData || {};
-  if(!manual || typeof manual !== "object" || !Object.keys(manual).length) return data;
-  const merged = { ...(data || {}) };
-  Object.entries(manual).forEach(([key,value]) => {
-    if(value !== undefined && value !== null && value !== "") merged[key] = value;
-  });
-  if(manual.manualCommentary){
-    merged.commentary = [{ ball:"Manual", text: manual.manualCommentary }, ...((Array.isArray(data?.commentary) ? data.commentary : []))];
-  }
-  return merged;
-}
-
-
-function applyThemeVisibility(themes){
-  const active = new Set(themes || []);
-  document.querySelectorAll("[data-theme]").forEach(card => {
-    const theme = card.dataset.theme;
-    if(theme === "hot") return;
-    card.classList.toggle("hidden", !active.has(theme));
-  });
-}
-let lastAutoSceneKey = "";
-function autoSceneSwitch(data, over, last){
-  if(!AUTO_SCENES || PREVIEW_MODE) return;
-  const balls = Number(data?.balls || 0);
-  const wkts = Number(data?.wkts || data?.wickets || 0);
-  const target = Number(data?.target || 0);
-  const lastBall = String(over?.[over.length - 1] || last?.ball || "").trim();
-  const statusText = String(data?.liveStatus || data?.statusText || data?.resultText || "").toLowerCase();
-  let themes = null;
-  let eventName = EVENT;
-  let key = "";
-  if(/review|third umpire|decision pending/.test(statusText)){
-    themes = ["scorebug","review","ticker"]; eventName = "Review"; key = `review-${balls}`;
-  } else if(/won|result|match complete|completed/.test(statusText)){
-    themes = ["result","moment","summary","ticker"]; eventName = "Result"; key = `result-${data?.resultText || balls}`;
-  } else if(/innings break|break|drinks|timeout/.test(statusText)){
-    themes = ["inningsbreak","summary","sponsor","ticker"]; eventName = "Break"; key = `break-${Math.floor(balls/6)}`;
-  } else if(/W/i.test(lastBall) || /wicket/i.test(String(last?.text || ""))){
-    themes = ["scorebug","lastwicket","fow","ticker"]; eventName = "Wicket Moment"; key = `wicket-${balls}-${wkts}`;
-  } else if(lastBall === "4" || lastBall === "6"){
-    themes = ["scorebug","oversummary","battercomp","ticker"]; eventName = "Boundary"; key = `boundary-${balls}-${lastBall}`;
-  } else if(target > 0){
-    themes = ["broadcast","rrmeter","winprob","ticker"]; eventName = "Chase Mode"; key = `chase-${Math.floor(balls/6)}`;
-  } else if(balls <= 36){
-    themes = ["scorebug","powerplay","ticker"]; eventName = "Powerplay"; key = `powerplay-${Math.floor(balls/6)}`;
-  }
-  if(!themes || key === lastAutoSceneKey) return;
-  lastAutoSceneKey = key;
-  applyThemeVisibility(themes);
-  setText("[data-event]", eventName);
-}
-
-function render(data){
-  if(!data || typeof data !== "object"){ debug(`No live data for match=${MATCH_ID}`); return; }
-  state.data = data;
-  data = mergeManualData(data);
-  debug(`LIVE OK: ${data.matchTitle || MATCH_ID} ${Number(data.runs||0)}/${Number(data.wkts||data.wickets||0)} (${data.overs || overText(data.balls||0)})`);
-  const batTeam = data.battingTeam || "-";
-  const bowlTeam = data.bowlingTeam || "-";
-  const batters = currentBatters(data);
-  const strikerObj = batters.striker || {};
-  const chase = computeChase(data);
-  const over = Array.isArray(data.over) ? data.over : [];
-  const commentary = Array.isArray(data.commentary) ? data.commentary : [];
-  const last = commentary[0] || commentary[commentary.length-1] || {};
-  const crr = Number(data.balls || 0) ? (Number(data.runs || 0)/(Number(data.balls || 1)/6)).toFixed(2) : "0.00";
-
-  setText("[data-match-title]", data.matchTitle || `${batTeam} vs ${bowlTeam}`);
-  setText("[data-event]", EVENT);
-  setText("[data-sponsor]", SPONSOR);
-  setText("[data-batting-team]", batTeam);
-  setText("[data-bowling-team]", bowlTeam);
-  setText("[data-runs]", Number(data.runs || 0));
-  setText("[data-wkts]", Number(data.wkts || data.wickets || 0));
-  setText("[data-overs]", data.overs || overText(data.balls || 0));
-  setText("[data-status]", data.liveStatus || (data.liveControl?.mode === "delay" ? "DELAY" : data.liveControl?.mode === "paused" ? "BREAK" : "LIVE"));
-  setText("[data-crr]", `CRR ${crr}`);
-  setText("[data-bowler-spell]", bowlerSpell(data));
-  setText("[data-last5]", `Last 5: ${lastFiveText(data)}`);
-  setText("[data-projected]", `Proj ${projectedScore(data)}`);
-  setText("[data-target-line]", chase.target === "-" ? "Target -" : `Need ${chase.need}`);
-  setText("[data-target]", chase.target);
-  setText("[data-need]", chase.need);
-  setText("[data-rrr]", chase.rrr);
-  setText("[data-bowler]", data.bowler?.name || data.currentBowler || "-");
-  setText("[data-striker]", `${batters.striker.name || "-"} ${Number(batters.striker.r||0)}(${Number(batters.striker.b||0)})`);
-  setText("[data-nonstriker]", `${batters.non.name || "-"} ${Number(batters.non.r||0)}(${Number(batters.non.b||0)})`);
-  setText("[data-player-name]", strikerObj.name || "-");
-  setText("[data-player-runs]", `${Number(strikerObj.r||0)} runs`);
-  setText("[data-player-balls]", `${Number(strikerObj.b||0)}b`);
-  setText("[data-player-sr]", `SR ${Number(strikerObj.b||0)?((Number(strikerObj.r||0)/Number(strikerObj.b||1))*100).toFixed(1):"0.0"}`);
-  setText("[data-partnership]", `${Number(data.partnershipRuns||0)} (${Number(data.partnershipBalls||0)})`);
-  setText("[data-over-text]", over.length ? over.join(" ") : "-");
-  setHtml("[data-over]", over.length ? over.map(x=>`<span class="ball-dot ${ballClass(x)}">${safe(x).slice(0,2)}</span>`).join("") : `<span class="ball-dot">-</span>`);
-  setHtml('[data-logo="batting"]', logoHtml(data, batTeam));
-  setHtml('[data-logo="bowling"]', logoHtml(data, bowlTeam));
-  setText("[data-last-ball]", last.ball || "Live Commentary");
-  setText("[data-last-comment]", last.text || data.tossText || "Waiting for ball update...");
-  setText("[data-last-wicket]", data.lastWicket || "-");
-  setHtml("[data-players]", normalizePlayers(data, batTeam).slice(0,12).map(p=>`<div class="player">${safe(p)}</div>`).join("") || `<div class="player">No squad</div>`);
-  setText("[data-ticker]", data.tickerText || `${data.matchTitle || `${batTeam} vs ${bowlTeam}`} · ${batTeam} ${Number(data.runs||0)}/${Number(data.wkts||data.wickets||0)} (${data.overs || overText(data.balls||0)}) · ${data.tossText || ""} · ${last.text || ""}`);
-
-
-  const overRuns = over.reduce((sum,item)=>{
-    const txt = String(item || "");
-    if(/W/i.test(txt)) return sum;
-    if(/Wd|NB/i.test(txt)) return sum + (parseInt(txt.replace(/[^\d]/g,""),10) || 1);
-    return sum + (parseInt(txt.replace(/[^\d]/g,""),10) || 0);
-  },0);
-  const fow = Array.isArray(data?.fallOfWickets) ? data.fallOfWickets : (Array.isArray(data?.fow) ? data.fow : []);
-  const lastWicketText = data?.lastWicket || data?.lastWicketInfo || "-";
-  const bowler = data?.bowler || {};
-  const bowlerName = bowler.name || data?.currentBowler || "-";
-  const bowlerRuns = Number(bowler.runs || bowler.r || 0);
-  const bowlerWkts = Number(bowler.wickets || bowler.w || 0);
-  const bowlerBalls = Number(bowler.balls || bowler.b || 0);
-  const bowlerOvers = bowlerBalls ? overText(bowlerBalls) : (bowler.overs || "0.0");
-  const bowlerEcon = bowlerBalls ? ((bowlerRuns / bowlerBalls) * 6).toFixed(2) : "0.00";
-  const crrValue = Number(crr || 0);
-  const rrrValue = chase.rrr === "-" || chase.rrr === "INF" ? 0 : Number(chase.rrr || 0);
-  let batProb = data?.winProbBatting != null ? Number(data.winProbBatting) : 50;
-  if(data?.winProbBatting == null && chase.target !== "-"){
-    const diff = Math.max(-30, Math.min(30, (crrValue - rrrValue) * 8));
-    batProb = Math.max(5, Math.min(95, 50 + diff));
-  }
-  const bowlProb = Math.max(0, Math.min(100, 100 - batProb));
-  const ppOvers = data?.powerplayOvers || (Number(data.balls || 0) <= 36 ? (data.overs || overText(data.balls || 0)) : "6.0");
-
-  setText("[data-powerplay-score]", `${data?.powerplayRuns ?? data?.runs ?? 0}/${data?.powerplayWkts ?? data?.wkts ?? data?.wickets ?? 0}`);
-  setText("[data-powerplay-overs]", ppOvers);
-  setHtml("[data-fow-list]", fow.length ? fow.map(x=>safe(x)).join(" • ") : "No wicket yet");
-  setText("[data-last-wicket-player]", lastWicketText === "-" ? "-" : String(lastWicketText).split(" ").slice(0,4).join(" "));
-  setText("[data-last-wicket-info]", lastWicketText);
-  setText("[data-bowler-name]", bowlerName);
-  setText("[data-bowler-figures]", `${bowlerOvers}-${Number(bowler.maidens || 0)}-${bowlerRuns}-${bowlerWkts}`);
-  setText("[data-bowler-econ]", bowlerEcon);
-  document.querySelectorAll("[data-win-left-style]").forEach(el=>el.style.width = `${batProb.toFixed(0)}%`);
-  document.querySelectorAll("[data-win-right-style]").forEach(el=>el.style.width = `${bowlProb.toFixed(0)}%`);
-  setText("[data-win-batting]", `${batTeam} ${batProb.toFixed(0)}%`);
-  setText("[data-win-bowling]", `${bowlTeam} ${bowlProb.toFixed(0)}%`);
-  setText("[data-over-summary-balls]", over.length ? over.join("  ") : "-");
-  setText("[data-over-summary-runs]", `Runs: ${overRuns}`);
-  setText("[data-next-batter]", data?.nextBatter || data?.nextBatsman || "-");
-  setText("[data-match-summary]", data?.resultText || data?.statusText || data?.liveStatus || `${batTeam} ${Number(data?.runs || 0)}/${Number(data?.wkts || data?.wickets || 0)} after ${data?.overs || overText(data?.balls || 0)} overs`);
-  setText("[data-meter-crr]", crr);
-  setText("[data-meter-rrr]", chase.rrr);
-  setText("[data-moment-player]", data?.momentPlayer || strikerObj?.name || "-");
-  setText("[data-moment-detail]", data?.momentDetail || `${Number(strikerObj?.r || 0)} runs from ${Number(strikerObj?.b || 0)} balls`);
-
-  const tossText = data?.tossText || data?.toss || "Toss update not available";
-  setText("[data-toss-title]", tossText);
-  setText("[data-toss-detail]", data?.tossDetail || data?.matchTitle || `${batTeam} vs ${bowlTeam}`);
-  const battingXI = normalizePlayers(data, batTeam).slice(0,11);
-  const bowlingXI = normalizePlayers(data, bowlTeam).slice(0,11);
-  setHtml("[data-xi-batting]", battingXI.length ? battingXI.map(p=>`<div>${safe(p)}</div>`).join("") : `<div>No XI</div>`);
-  setHtml("[data-xi-bowling]", bowlingXI.length ? bowlingXI.map(p=>`<div>${safe(p)}</div>`).join("") : `<div>No XI</div>`);
-  setText("[data-comp-striker]", batters.striker.name || "-");
-  setText("[data-comp-striker-stat]", `${Number(batters.striker.r||0)}(${Number(batters.striker.b||0)}) · 4s ${Number(batters.striker.fours||0)} · 6s ${Number(batters.striker.sixes||0)}`);
-  setText("[data-comp-nonstriker]", batters.non.name || "-");
-  setText("[data-comp-nonstriker-stat]", `${Number(batters.non.r||0)}(${Number(batters.non.b||0)}) · 4s ${Number(batters.non.fours||0)} · 6s ${Number(batters.non.sixes||0)}`);
-  setText("[data-current-bowler]", bowlerName);
-  setText("[data-current-bowler-stat]", `${bowlerOvers}-${bowlerRuns}-${bowlerWkts} · Econ ${bowlerEcon}`);
-  setText("[data-previous-bowler]", data?.previousBowler?.name || data?.lastBowler?.name || "-");
-  setText("[data-previous-bowler-stat]", data?.previousBowler?.figures || data?.lastBowler?.figures || "-");
-  setText("[data-timeline-title]", `Partnership ${Number(data.partnershipRuns||0)} (${Number(data.partnershipBalls||0)})`);
-  const timeline = fow.length ? fow : [`${Number(data.partnershipRuns||0)}(${Number(data.partnershipBalls||0)})`];
-  setHtml("[data-timeline-list]", timeline.map(x=>`<span>${safe(x)}</span>`).join(""));
-  setText("[data-result-title]", data?.resultText || data?.statusText || "Result Pending");
-  setText("[data-result-detail]", data?.resultDetail || data?.matchTitle || `${batTeam} vs ${bowlTeam}`);
-  setText("[data-venue-title]", data?.venue || data?.ground || "Match Venue");
-  setText("[data-venue-detail]", data?.matchDate || data?.eventName || data?.matchTitle || `${batTeam} vs ${bowlTeam}`);
-  setText("[data-innings-title]", data?.inningsTitle || "Innings Break");
-  setText("[data-innings-detail]", data?.inningsDetail || (chase.target !== "-" ? `${bowlTeam} need ${chase.target} to win` : "Second innings coming up..."));
-  setText("[data-milestone-title]", data?.milestoneTitle || data?.milestone || "50");
-  setText("[data-milestone-detail]", data?.milestoneDetail || `${strikerObj?.name || "Batter"} reaches milestone`);
-  setText("[data-review-title]", data?.reviewTitle || "REVIEW");
-  setText("[data-review-detail]", data?.reviewText || data?.reviewDetail || "Decision pending...");
-
-
-  const isWicket = /W/i.test(String(over[over.length-1] || "")) || /wicket/i.test(String(last.text || ""));
-  autoTrigger(data, over, last);
-  autoSceneSwitch(data, over, last);
-  document.querySelectorAll('[data-theme="wicket"]').forEach(el => {
-    if(PREVIEW_MODE || AUTO_SCENES) return;
-    el.classList.toggle("hidden", THEME !== "gallery" && THEME !== "wicket" ? true : !isWicket);
-  });
-}
-
-async function pollLive(){
-  try{
-    const data = await fetchLiveMatchRest(MATCH_ID);
-    render(data);
-  }catch(error){
-    debug(`REST failed: ${error.message || error}`);
-  }
-}
-pollLive();
-setInterval(pollLive, POLL_MS);
-listenLiveMatch(MATCH_ID, (data) => render(data), (error) => debug(`SDK listen failed: ${error.message || error}`));
-if(!LOCK_CONTROL){
-  listenObsControl(MATCH_ID, (control) => {
-    if(!control || !control.enabled) return;
-    controlManualData = control.manualData || {};
-    if(state.data) render(state.data);
-    if(control.hotEvent && control.hotEvent.id && String(control.hotEvent.id) !== String(lastControlHotId)){
-      lastControlHotId = control.hotEvent.id;
-      showHotEvent(control.hotEvent.type, control.hotEvent.text, control.hotEvent.sub || "", Number(control.hotEvent.duration || 2000));
-    }
-    const next = new URL(location.href);
-    const setOrDelete = (key, value) => {
-      if(value === undefined || value === null || value === "") next.searchParams.delete(key);
-      else next.searchParams.set(key, String(value));
-    };
-    setOrDelete("match", MATCH_ID);
-    setOrDelete("theme", control.mode === "single" ? (control.singleTheme || "scorebug") : "");
-    setOrDelete("layout", control.mode === "custom" ? "custom" : "");
-    setOrDelete("show", control.mode === "custom" ? (Array.isArray(control.themes) ? (control.themes.length ? control.themes.join(",") : "__none__") : control.show || "scorebug") : "");
-    if(control.mode === "gallery") setOrDelete("theme", "gallery");
-    setOrDelete("sponsor", control.sponsor || "Tech MCC");
-    setOrDelete("event", control.eventName || "Live Cricket");
-    setOrDelete("accent", String(control.accent || "#15b981").replace("#",""));
-    setOrDelete("scale", control.scale || "1.12");
-    setOrDelete("opacity", control.opacity || "1");
-    setOrDelete("z", control.zIndex || "20");
-    setOrDelete("anim", control.animation || "slide");
-    setOrDelete("auto", control.autoTriggers === false ? "0" : "1");
-    setOrDelete("autoScenes", control.autoScenes ? "1" : "");
-    setOrDelete("poll", control.poll || "3000");
-    setOrDelete("pos", control.pos || "");
-    setOrDelete("debug", control.debug ? "1" : "");
-    setOrDelete("positions", control.positions ? JSON.stringify(control.positions) : "");
-    next.searchParams.delete("hot");
-    next.searchParams.delete("hotText");
-    next.searchParams.delete("hotDuration");
-    next.searchParams.delete("controlVersion");
-    if(next.href !== location.href) location.replace(next.href);
-  }, (error)=>debug(`OBS control failed: ${error.message || error}`));
-}
-</script>
+      <div class="scorebug-bottom">
+        <span id="bugMatchTitle">Live Match</span>
+        <span id="bugInfo">CRR 0.00</span>
+      </div>
+    </section>
+
+    <section id="lowerThird" class="obs-card lower-third card-lower">
+      <div class="lt-title" id="ltTitle">Live Cricket</div>
+      <div class="lt-score"><span id="ltBattingTeam">-</span> <b id="ltScore">0/0</b> <small id="ltOvers">0.0 ov</small></div>
+      <div class="lt-meta" id="ltMeta">Waiting for Firebase data...</div>
+    </section>
+
+    <section id="battersCard" class="obs-card side-card card-batters">
+      <h3>BATTERS</h3>
+      <div class="player-row striker"><span id="bat1Name">-</span><b id="bat1Score">0 (0)</b></div>
+      <div class="player-row"><span id="bat2Name">-</span><b id="bat2Score">0 (0)</b></div>
+      <div class="mini-line"><span>Partnership</span><b id="batPartnership">0 (0)</b></div>
+    </section>
+
+    <section id="bowlerCard" class="obs-card side-card card-bowler">
+      <h3>BOWLER</h3>
+      <div class="player-row"><span id="bowlerName">-</span><b id="bowlerFig">0.0-0-0</b></div>
+      <div class="mini-line"><span>Last Wicket</span><b id="lastWicketSmall">-</b></div>
+    </section>
+
+    <section id="targetCard" class="obs-card target-card card-target">
+      <span>TARGET</span>
+      <b id="targetRuns">-</b>
+      <small id="targetNeed">Need -</small>
+    </section>
+
+    <section id="lastOverCard" class="obs-card last-over-card card-lastover">
+      <h3>LAST / CURRENT OVER</h3>
+      <div id="lastOverBalls" class="balls-row"><span class="ball">-</span></div>
+      <small id="lastOverText">Over -</small>
+    </section>
+
+    <section id="teamScoresCard" class="obs-card team-scores card-teams">
+      <h3>TEAM SCORE</h3>
+      <div class="team-score-line"><span id="teamScoreNameA">Team A</span><b id="teamScoreValueA">-</b></div>
+      <div class="team-score-line"><span id="teamScoreNameB">Team B</span><b id="teamScoreValueB">Yet to bat</b></div>
+      <p id="teamScoreResult">Live match running</p>
+    </section>
+
+    <section id="partnershipCard" class="obs-card partnership-card card-partnership">
+      <div class="big-label">PARTNERSHIP</div>
+      <div class="part-main"><b id="partRuns">0</b><span id="partBalls">0 balls</span></div>
+      <div class="part-names" id="partNames">- & -</div>
+    </section>
+
+    <section id="inningsBreakCard" class="obs-card full-banner card-innings">
+      <div class="banner-kicker" id="inningsKicker">INNINGS BREAK</div>
+      <h1 id="inningsScore">0/0</h1>
+      <p id="inningsText">Target will appear here</p>
+    </section>
+
+    <section id="fullScoreboard" class="obs-card full-panel card-scoreboard">
+      <div class="panel-head"><span id="scoreboardTitle">FULL SCOREBOARD</span><b id="scoreboardScore">0/0</b></div>
+      <div class="two-col">
+        <div>
+          <h3>BATTING</h3>
+          <table><thead><tr><th>Batter</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody id="scoreboardBatting"></tbody></table>
+        </div>
+        <div>
+          <h3>BOWLING</h3>
+          <table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody id="scoreboardBowling"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <section id="matchSummary" class="obs-card full-panel summary-panel card-summary">
+      <div class="panel-head"><span>MATCH SUMMARY</span><b id="summaryStatus">LIVE</b></div>
+      <div class="summary-grid">
+        <div><span id="sumTeamA">Team A</span><b id="sumScoreA">-</b></div>
+        <div><span id="sumTeamB">Team B</span><b id="sumScoreB">-</b></div>
+        <div><span>Top Batter</span><b id="sumTopBatter">-</b></div>
+        <div><span>Best Bowler</span><b id="sumBestBowler">-</b></div>
+      </div>
+      <h2 id="summaryResult">Match running</h2>
+      <p id="summaryInfo">Toss / CRR / RRR info</p>
+    </section>
+
+    <section id="tickerCard" class="ticker card-ticker">
+      <div class="ticker-track" id="tickerText">Waiting for match data...</div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/obs.js"></script>
 </body>
 </html>

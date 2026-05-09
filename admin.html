@@ -1,468 +1,102 @@
-﻿﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="hi">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Advanced Admin Match Control</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cricket Live Score Admin</title>
   <link rel="stylesheet" href="./css/admin.css">
 </head>
 <body>
-  <div id="authOverlay" class="auth-overlay">
-    <div class="auth-box">
-      <h2>Admin Login</h2>
-      <div class="muted">Enter admin password to control live match.</div>
-      <input id="adminPasswordInput" type="password" placeholder="Password" autocomplete="current-password">
-      <button id="adminLoginBtn" class="btn" style="width:100%;margin-top:10px;" type="button">Login</button>
-      <div class="muted" id="authError" style="margin-top:10px;color:#b91c1c;"></div>
-    </div>
-  </div>
-  <div class="top">
-    <div class="pill live" id="liveStatusPill">LIVE</div>
-    <div><div class="title" id="topTitle">Select Teams</div><div class="sub" id="inningTitle">Create or select teams</div></div>
-    <div class="save-status" id="saveStatus">Firebase: connecting...</div>
-  </div>
-
-  <div class="page-tabs">
-    <button id="homeTab" class="page-tab active" onclick="app.switchPage('home')">Home (Live)</button>
-    <button id="setupTab" class="page-tab" onclick="app.switchPage('setup')">Match Setup</button>
-    <button id="leagueTab" class="page-tab" onclick="app.switchPage('league')">Create League</button>
-    <button id="historyTab" class="page-tab" onclick="app.switchPage('history')">History</button>
-    <button id="teamsTab" class="page-tab" onclick="app.switchPage('teams')">Teams</button>
-  </div>
-
-  <div class="wrap">
-    <div id="homePage" class="page home-grid active">
-      <div>
-        <div class="panel score-top-panel">
-          <div class="score">
-            <div><b><span id="runs">0</span>-<span id="wkts">0</span></b><div class="muted">Overs: <span id="overs">0.0</span></div></div>
-            <div class="crr"><div class="muted">CRR</div><div class="v" id="crr">0.00</div></div>
-          </div>
-        </div>
-
-        <div class="panel snapshot-panel">
-          <h3>Live Snapshot</h3>
-          <table class="snapshot-table"><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>
-            <tr><td><span id="bat1Name">-</span> <b id="strike1" style="color:#15803d">*</b></td><td id="bat1r">0</td><td id="bat1b">0</td><td id="bat1f">0</td><td id="bat1s">0</td><td id="bat1sr">0.00</td></tr>
-            <tr><td><span id="bat2Name">-</span> <b id="strike2" style="color:#15803d"></b></td><td id="bat2r">0</td><td id="bat2b">0</td><td id="bat2f">0</td><td id="bat2s">0</td><td id="bat2sr">0.00</td></tr>
-          </tbody></table>
-          <table class="snapshot-table bowler-snapshot"><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody><tr><td id="bowlerName">-</td><td id="bowlO">0.0</td><td id="bowlR">0</td><td id="bowlW">0</td><td id="bowlER">0.00</td></tr></tbody></table>
-        </div>
-
-        <div class="panel">
-          <h3>Partnership + Wicket</h3>
-          <div class="metric-grid">
-            <div class="metric"><div class="muted">Partnership</div><div class="value" id="partnership">0 (0)</div></div>
-            <div class="metric"><div class="muted">Last Wicket</div><div class="value" id="lastWicket">-</div></div>
-            <div class="metric"><div class="muted">Innings</div><div class="value" id="inningsNo">1</div></div>
-            <div class="metric"><div class="muted">Wicket Type</div><div class="value" id="wicketTypeHint">none</div></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="admin-main-column">
-        <div class="panel live-control-panel">
-          <h3>Live Control <span class="section-kicker">Broadcast</span></h3>
-          <div class="control-dock">
-            <div class="control-main">
-              <div class="control-head">
-                <div>
-                  <div class="control-title">Broadcast Status</div>
-                  <div class="control-state" id="liveModeText">Live</div>
-                </div>
-                <div class="muted" id="liveModeNote">Scoring open</div>
-              </div>
-              <div class="live-buttons">
-                <button id="liveBtn" class="live-btn live" onclick="app.setLiveControl('live')">Live</button>
-                <button id="pausedBtn" class="live-btn paused" onclick="app.setLiveControl('paused')">Break</button>
-                <button id="delayBtn" class="live-btn delay" onclick="app.setLiveControl('delay')">Delay</button>
-              </div>
-            </div>
-            <div class="lock-panel">
-              <button id="lockBtn" class="btn danger" onclick="app.setScoringLock(true)">Lock Scoring</button>
-              <button id="unlockBtn" class="btn secondary" onclick="app.setScoringLock(false)">Unlock Scoring</button>
-              <button id="switchInningsBtn" class="btn secondary" onclick="app.switchInnings()">Switch Innings</button>
-              <button id="manualCompleteBtn" class="btn warn" onclick="app.completeMatch()">Complete Match</button>
-            </div>
-          </div>
-          <details class="share-details">
-            <summary>Share QR / Public Link</summary>
-            <div class="qr-box">
-              <img id="homeShareQr" alt="Live link QR">
-              <div>
-                <b>Live QR</b>
-                <div class="muted" id="homeShareLinkText">-</div>
-                <button class="btn secondary" style="margin-top:8px;" onclick="app.copyUserLink()">Copy Link</button>
-              </div>
-            </div>
-          </details>
-          <div class="metric-grid">
-            <div class="metric"><div class="muted">1st Innings</div><div class="value" id="firstInningsValue">-</div></div>
-            <div class="metric"><div class="muted">Target</div><div class="value" id="targetValue">-</div></div>
-            <div class="metric"><div class="muted">Need</div><div class="value" id="needValue">-</div></div>
-            <div class="metric"><div class="muted">RRR</div><div class="value" id="rrrValue">-</div></div>
-          </div>
-          <div id="resultPanel" class="result-panel">
-            <div class="result-title">Match Result</div>
-            <div id="resultWinner" class="result-winner">-</div>
-            <div id="resultScoreline" class="result-scoreline">-</div>
-            <div class="actions" style="grid-template-columns:1fr 1fr 1fr;margin-top:12px;">
-              <button class="btn" onclick="app.completeMatch()">Complete Match</button>
-              <button id="superOverBtn" class="btn warn" onclick="app.startSuperOver()">Start Super Over</button>
-              <button class="btn secondary" onclick="app.switchPage('history')">View History</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="panel ball-control-panel">
-          <h3>Ball Control <span class="section-kicker">Score Entry</span></h3>
-          <div class="options">
-            <label class="opt"><input type="checkbox" id="wide">Wide</label>
-            <label class="opt"><input type="checkbox" id="noball">No Ball</label>
-            <label class="opt"><input type="checkbox" id="byes">Byes</label>
-            <label class="opt"><input type="checkbox" id="legbyes">Leg Byes</label>
-            <label class="opt"><input type="checkbox" id="wicket" onchange="app.handleWicketToggle(this)">Wicket</label>
-          </div>
-          <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-            <button class="btn danger" onclick="app.undo()">Undo (Quick)</button>
-            <button class="btn secondary" onclick="app.clearChecks()">Clear Type</button>
-          </div>
-          <div class="actions batter-actions">
-            <button id="swapBatsmanBtn" class="btn secondary" onclick="app.swapBatsman()">Swap Batsman</button>
-            <button id="retireBatsmanBtn" class="btn secondary" onclick="app.retireBatsman()">Retire Batsman</button>
-          </div>
-          <div class="runs">
-            <button class="run" onclick="app.addBall(0)">0</button><button class="run" onclick="app.addBall(1)">1</button><button class="run" onclick="app.addBall(2)">2</button><button class="run" onclick="app.addBall(3)">3</button>
-            <button class="run" onclick="app.addBall(4)">4</button><button class="run" onclick="app.addBall(5)">5</button><button class="run" onclick="app.addBall(6)">6</button><button class="run" onclick="app.addBall('custom')">+</button>
-          </div>
-          <div id="thisOver"></div>
-          <h3 style="margin-top:14px;">Recent Balls</h3>
-          <div id="recentBallsList" class="list"></div>
-        </div>
-
-        <div class="panel">
-          <h3>Over Summary (click to edit)</h3>
-          <div id="overSummaryList" class="list"></div>
-        </div>
-        <div class="panel">
-          <h3>Bowler Spell Stats</h3>
-          <table>
-            <thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead>
-            <tbody id="bowlerStatsBody"></tbody>
-          </table>
-        </div>
-        <div class="panel">
-          <h3>Fall of Wickets</h3>
-          <div id="fowList" class="list"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="setupPage" class="page setup-grid">
-      <div class="panel">
-        <h3>Match Creator</h3>
-        <label>Match Title (Auto)</label><input id="matchTitle" value="Select Teams" readonly>
-        <div class="grid2">
-          <div><label>Visitor Team</label><select id="battingTeam"></select></div>
-          <div><label>Host Team</label><select id="bowlingTeam"></select></div>
-        </div>
-        <label>Toss Winner</label>
-        <div class="grid2">
-          <label class="opt"><input type="radio" name="tossWinner" id="tossWinnerA" value="A"> <span id="tossLabelA">Visitor</span></label>
-          <label class="opt"><input type="radio" name="tossWinner" id="tossWinnerB" value="B"> <span id="tossLabelB">Host</span></label>
-        </div>
-        <label>Toss Decision</label>
-        <select id="tossDecision">
-          <option value="bat">Batting</option>
-          <option value="bowl">Bowling</option>
-        </select>
-        <label>Total Overs</label><input id="totalOvers" type="number" min="1" max="100" value="20">
-        <label>Follow Button Link</label><input id="followLinkInput" placeholder="https://example.com/channel-or-page">
-        <label>Opening Players</label>
-        <div class="grid2">
-          <div><label>Striker</label><select id="openingStriker"></select></div>
-          <div><label>Non-Striker</label><select id="openingNonStriker"></select></div>
-        </div>
-        <label>Opening Bowler</label><select id="openingBowler"></select>
-        <div class="match-preview">
-          <div class="match-teams">
-            <div class="team-card"><div class="muted">Batting</div><b id="previewBattingTeam">Select</b><div class="muted" id="previewBattingCount">0 players</div></div>
-            <div class="vs-badge">VS</div>
-            <div class="team-card"><div class="muted">Bowling</div><b id="previewBowlingTeam">Select</b><div class="muted" id="previewBowlingCount">0 players</div></div>
-          </div>
-          <div class="match-meta">
-            <div class="metric"><div class="muted">Overs</div><div class="value" id="previewOvers">20</div></div>
-            <div class="metric"><div class="muted">Toss</div><div class="value" id="previewToss">Pending</div></div>
-            <div class="metric"><div class="muted">Status</div><div class="value" id="previewStatus">Ready</div></div>
-          </div>
-          <div class="creator-actions">
-            <button class="btn" onclick="app.startNewMatch()">Start New Match</button>
-            <button class="btn secondary" onclick="app.copyUserLink()">Copy User Link</button>
-          </div>
-        </div>
-        <label>Saved Links</label>
-        <div class="grid2">
-          <input id="savedLinkName" placeholder="Link name e.g. Final Match">
-          <select id="savedLinksSelect"></select>
-        </div>
-        <div class="actions" style="grid-template-columns:1fr 1fr 1fr;margin-top:8px;">
-          <button class="btn secondary" onclick="app.saveCurrentLink()">Save Link</button>
-          <button class="btn secondary" onclick="app.openSavedLink()">Open</button>
-          <button class="btn secondary" onclick="app.copySavedLink()">Copy</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>Team & Player Creator</h3>
-        <label>Create New Team</label>
-        <div class="grid2">
-          <input id="newTeamName" placeholder="Team name">
-          <input id="newTeamShort" placeholder="Short name e.g. IND">
-        </div>
-        <div class="grid2" style="margin-top:8px;">
-          <input id="newTeamLogo" placeholder="Team logo image URL">
-          <input id="newTeamLogoFile" type="file" accept="image/*" onchange="app.uploadNewTeamLogo(this)">
-        </div>
-        <div class="actions" style="grid-template-columns:1fr;margin-top:8px;">
-          <button class="btn secondary" onclick="app.createTeam()">Create Team</button>
-        </div>
-
-        <label>Add Players To Team</label>
-        <select id="teamForPlayer"></select>
-        <div class="muted" id="selectedTeamPlayers" style="margin-top:6px;">No team selected</div>
-        <textarea id="newPlayerName" rows="4" placeholder="Add many players: Rohit, Ishan, Surya or one per line"></textarea>
-        <div class="actions" style="grid-template-columns:1fr; margin-top:8px;">
-          <button class="btn secondary" onclick="app.addPlayerToTeam()">Add Players To Team</button>
-        </div>
-      </div>
-
-      <div class="panel">
-        <h3>Setup Note</h3>
-        <div class="muted">Live snapshot is available on Home (Live) page.</div>
-        <div class="qr-box">
-          <img id="shareQr" alt="Live link QR">
-          <div>
-            <b>Public Live Link</b>
-            <div class="muted" id="shareLinkText">-</div>
-            <button class="btn secondary" style="margin-top:8px;" onclick="app.copyUserLink()">Copy Link</button>
-          </div>
-        </div>
-        <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:10px;">
-          <button class="btn secondary" onclick="app.exportTournamentSummary()">Export Summary</button>
-          <button class="btn danger" onclick="app.toggleArchive()">Archive/Unarchive</button>
-        </div>
-      </div>
-      <div class="panel">
-        <h3>Tournament Snapshot</h3>
-        <div class="muted" id="tourneyMeta">No data yet</div>
-        <div id="mvpMeta" class="muted" style="margin-top:6px;">MVP: -</div>
-      </div>
-      <div class="panel">
-        <h3>Points Table</h3>
-        <table>
-          <thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>NRR</th></tr></thead>
-          <tbody id="pointsTableBody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div id="leaguePage" class="page league-grid">
-      <div>
-        <div class="panel">
-          <h3>Create League</h3>
-          <label>League Name</label><input id="leagueName" placeholder="IPL 2026">
-          <div class="grid2">
-            <div><label>Default Overs</label><input id="leagueOvers" type="number" min="1" max="100" value="20"></div>
-            <div><label>Format</label><select id="leagueFormat"><option value="single">Round Robin</option><option value="double">Double Round Robin</option></select></div>
-          </div>
-          <label class="opt" style="margin-top:8px;"><input type="checkbox" id="leaguePlayoffs" checked> Add IPL Playoffs (Q1, Eliminator, Q2, Final)</label>
-          <label>Teams From Catalog</label>
-          <select id="leagueTeamsSelect" class="league-team-picker" multiple></select>
-          <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-            <button class="btn secondary" onclick="app.selectAllLeagueTeams()">Select All Teams</button>
-            <button class="btn secondary" onclick="app.clearLeagueTeamSelection()">Clear Selection</button>
-          </div>
-          <div class="muted" style="margin-top:6px;">Mobile par Select All easy rahega. Desktop par Ctrl/Shift se bhi teams select kar sakte ho.</div>
-          <label>Add New Teams Here</label>
-          <textarea id="leagueManualTeams" rows="3" placeholder="Team 1, Team 2, Team 3"></textarea>
-          <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:10px;">
-            <button class="btn secondary" onclick="app.addLeagueManualTeams()">Add Teams</button>
-            <button class="btn" onclick="app.createLeagueSchedule()">Generate Schedule</button>
-          </div>
-          <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:8px;">
-            <button class="btn secondary" onclick="app.saveLeague()">Save League</button>
-            <button class="btn danger" onclick="app.clearLeague()">Clear League</button>
-          </div>
-        </div>
-        <div class="panel">
-          <h3>Manual Schedule / Edit</h3>
-          <input id="leagueEditIndex" type="hidden" value="">
-          <div class="grid2">
-            <div><label>Stage</label><select id="manualMatchStage"><option value="League">League</option><option value="Q1">Q1</option><option value="Eliminator">Eliminator</option><option value="Q2">Q2</option><option value="Final">Final</option></select></div>
-            <div><label>Round</label><input id="manualMatchRound" placeholder="Round 1 / Playoffs"></div>
-          </div>
-          <div class="grid2">
-            <div><label>Team A</label><input id="manualTeamA" list="leagueTeamNames" placeholder="Team A or TBA"></div>
-            <div><label>Team B</label><input id="manualTeamB" list="leagueTeamNames" placeholder="Team B or TBA"></div>
-          </div>
-          <datalist id="leagueTeamNames"></datalist>
-          <div class="grid2">
-            <div><label>Date</label><input id="manualMatchDate" type="date"></div>
-            <div><label>Time</label><input id="manualMatchTime" type="time"></div>
-          </div>
-          <label>Venue</label><input id="manualMatchVenue" placeholder="Wankhede Stadium">
-          <label>Overs</label><input id="manualMatchOvers" type="number" min="1" max="100" value="20">
-          <div class="actions" style="grid-template-columns:1fr 1fr 1fr;margin-top:10px;">
-            <button class="btn secondary" onclick="app.addManualLeagueMatch()">Add Match</button>
-            <button class="btn" onclick="app.updateLeagueMatchFromEditor()">Update</button>
-            <button class="btn secondary" onclick="app.clearLeagueMatchEditor()">Clear</button>
-          </div>
-          <div class="muted" style="margin-top:8px;">Playoff me Q1, Eliminator, Q2, Final select karo. Team later decide ho to TBA bhi likh sakte ho.</div>
-        </div>
-        <div class="panel">
-          <h3>League Summary</h3>
-          <div class="metric-grid">
-            <div class="metric"><div class="muted">Teams</div><div class="value" id="leagueTeamCount">0</div></div>
-            <div class="metric"><div class="muted">Matches</div><div class="value" id="leagueMatchCount">0</div></div>
-            <div class="metric"><div class="muted">Done</div><div class="value" id="leagueDoneCount">0</div></div>
-            <div class="metric"><div class="muted">Pending</div><div class="value" id="leaguePendingCount">0</div></div>
-          </div>
-          <div class="muted" id="leagueHint" style="margin-top:10px;">League create karo, phir schedule se match setup load karo.</div>
-        </div>
-      </div>
-      <div>
-        <div class="panel">
-          <h3>League Schedule</h3>
-          <div id="leagueScheduleList" class="list" style="max-height:680px;"></div>
-        </div>
-        <div class="panel">
-          <h3>League Points Table</h3>
-          <table>
-            <thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>NRR</th></tr></thead>
-            <tbody id="leaguePointsTableBody"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div id="historyPage" class="page">
-    <h2>Match History</h2>
-    <div id="historyList"></div>
-  </div>
-  <div id="teamsPage" class="page teams-grid">
-    <div class="panel">
-      <h3>Teams</h3>
-      <div id="teamsList" class="list" style="max-height:520px;"></div>
-    </div>
-    <div class="panel">
-      <div id="teamEditorEmpty" class="muted">Select a team to edit short name, logo, and players.</div>
-      <div id="teamEditor" style="display:none;">
-        <div class="team-edit-head">
-          <div id="teamLogoPreview" class="team-logo-large">-</div>
-          <div>
-            <h3 id="teamEditorTitle" style="margin:0;">Team</h3>
-            <div class="muted" id="teamEditorMeta">0 players</div>
-          </div>
-        </div>
-        <div class="grid2">
-          <div><label>Team Name</label><input id="editTeamName"></div>
-          <div><label>Short Name</label><input id="editTeamShort"></div>
-        </div>
-        <label>Team Logo URL</label><input id="editTeamLogo" placeholder="https://...">
-        <label>Upload Team Logo</label><input id="editTeamLogoFile" type="file" accept="image/*" onchange="app.uploadTeamLogo(this)">
-        <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:10px;">
-          <button class="btn" onclick="app.saveTeamEdit()">Save Team</button>
-          <button class="btn secondary" onclick="app.switchPage('setup')">Create More</button>
-        </div>
-        <hr style="border:0;border-top:1px solid #e5edf6;margin:16px 0;">
-        <div class="grid2">
-          <div>
-            <h3>Players</h3>
-            <div id="teamPlayersList" class="list" style="max-height:360px;"></div>
-            <label>Add Player</label><input id="teamPageNewPlayer" placeholder="Player name">
-            <button class="btn secondary" style="margin-top:8px;width:100%;" onclick="app.addPlayerFromTeamPage()">Add Player</button>
-          </div>
-          <div>
-            <h3>Player Edit</h3>
-            <div id="playerEditorEmpty" class="muted">Select a player to edit.</div>
-            <div id="playerEditor" style="display:none;">
-              <div class="team-edit-head">
-                <div id="playerPhotoPreview" class="team-logo-large">-</div>
-                <div>
-                  <div class="muted">Selected Player</div>
-                  <b id="playerEditorTitle">Player</b>
-                </div>
-              </div>
-              <label>Player Name</label><input id="editPlayerName">
-              <label>Player Image URL</label><input id="editPlayerImage" placeholder="https://...">
-              <label>Upload Player Image</label><input id="editPlayerImageFile" type="file" accept="image/*" onchange="app.uploadPlayerImage(this)">
-              <div class="actions" style="grid-template-columns:1fr 1fr;margin-top:10px;">
-                <button class="btn" onclick="app.savePlayerEdit()">Save Player</button>
-                <button class="btn danger" onclick="app.deleteSelectedPlayer()">Delete</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div id="popup" class="popup"></div>
-  <div id="wicketOverlay" class="wicket-overlay">
-    <div class="wicket-modal">
-      <div class="picker-title">Wicket Detail</div>
-      <div class="picker-help">Type select karo. Name optional hai.</div>
-      <div class="wicket-type-grid">
-        <button class="wicket-type-btn active" data-type="Bowled" onclick="app.selectWicketModalType('Bowled')">Bowled</button>
-        <button class="wicket-type-btn" data-type="LBW" onclick="app.selectWicketModalType('LBW')">LBW</button>
-        <button class="wicket-type-btn" data-type="Caught" onclick="app.selectWicketModalType('Caught')">Caught</button>
-        <button class="wicket-type-btn" data-type="Run Out" onclick="app.selectWicketModalType('Run Out')">Run Out</button>
-        <button class="wicket-type-btn" data-type="Stumping" onclick="app.selectWicketModalType('Stumping')">Stumping</button>
-      </div>
-      <label id="wicketOutLabel">Out batsman</label>
-      <select id="wicketOutBatsman">
-        <option value="">Striker</option>
-      </select>
-      <label id="wicketHelperLabel">Fielder / keeper / throw name optional</label>
-      <input id="wicketHelperName" list="wicketHelperPlayers" placeholder="Optional name">
-      <datalist id="wicketHelperPlayers"></datalist>
-      <div class="picker-actions">
-        <button class="btn secondary" onclick="app.cancelWicketModal()">Cancel</button>
-        <button class="btn" onclick="app.applyWicketModal()">Done</button>
-      </div>
-    </div>
-  </div>
-  <div id="resultOverlay" class="result-overlay">
-    <div class="result-modal">
-      <div class="result-title">Match Finished</div>
-      <div id="resultOverlayWinner" class="result-winner">-</div>
-      <div class="result-modal-grid">
-        <div class="metric"><div class="muted">1st Innings</div><div class="value" id="resultOverlayFirst">-</div></div>
-        <div class="metric"><div class="muted">2nd Innings</div><div class="value" id="resultOverlaySecond">-</div></div>
-      </div>
-      <div id="resultOverlayLine" class="result-scoreline">-</div>
-      <div class="actions" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-top:16px;">
-        <button class="btn" onclick="app.completeMatch()">Complete Match</button>
-        <button id="superOverOverlayBtn" class="btn warn" onclick="app.startSuperOver()">Start Super Over</button>
-        <button class="btn secondary" onclick="app.switchPage('history');app.closeResultOverlay()">History</button>
-        <button class="btn" onclick="app.closeResultOverlay()">Close</button>
-      </div>
-    </div>
-  </div>
-  <div id="pickerOverlay" class="picker-overlay">
-    <div class="picker-modal">
-      <div class="picker-title" id="pickerTitle">Select</div>
-      <div class="picker-help">Choose from squad or type a new player name.</div>
-      <div class="picker-list" id="pickerList"></div>
-      <input class="picker-manual" id="pickerManualInput" placeholder="Type new player name">
-      <div class="picker-actions">
-        <button class="btn secondary" id="pickerCancelBtn">Cancel</button>
-        <button class="btn" id="pickerOkBtn">Use Name</button>
-      </div>
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="brand"><img src="./assets/logo.png" alt="Logo"><div><h1>Admin Login</h1><p>Firebase Email/Password</p></div></div>
+      <label>Email</label><input id="loginEmail" type="email" placeholder="admin@example.com">
+      <label>Password</label><input id="loginPassword" type="password" placeholder="Password">
+      <button id="loginBtn" class="btn primary">Login</button>
+      <div id="loginMessage" class="message"></div>
     </div>
   </div>
 
-<script type="module" src="./js/admin.js"></script>
+  <div id="adminApp" class="app hidden">
+    <header class="topbar">
+      <div class="status-pill" id="topStatus">NO LIVE</div>
+      <div><h1 id="topTitle">Cricket Admin</h1><p id="topSub">Hybrid Firebase scoring panel</p></div>
+      <div class="top-actions"><span id="syncStatus">Ready</span><button id="logoutBtn" class="btn light">Logout</button></div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-page="setup">Match Setup</button>
+      <button class="tab" data-page="live">Live Match Control</button>
+      <button class="tab" data-page="league">Create League</button>
+      <button class="tab" data-page="teams">Teams</button>
+      <button class="tab" data-page="history">History</button>
+    </nav>
+
+    <main class="wrap">
+      <section id="setup" class="page active setup-grid">
+        <div class="panel">
+          <h2>Match Setup</h2>
+          <div class="grid2"><div><label>Select League</label><select id="setupLeague"></select></div><div><label>Match Type</label><input id="matchType" value="T20"></div></div>
+          <div class="grid2"><div><label>Team A</label><select id="teamASelect"></select></div><div><label>Team B</label><select id="teamBSelect"></select></div></div>
+          <div class="grid3"><div><label>Venue</label><input id="venue" placeholder="Ground"></div><div><label>Date</label><input id="matchDate" type="date"></div><div><label>Time</label><input id="matchTime" type="time"></div></div>
+          <div class="grid3"><div><label>Total Overs</label><input id="totalOvers" type="number" value="20" min="1"></div><div><label>Toss Winner</label><select id="tossWinner"></select></div><div><label>Toss Decision</label><select id="tossDecision"><option value="bat">Bat</option><option value="bowl">Bowl</option></select></div></div>
+          <div class="grid3"><div><label>Opening Striker</label><select id="openingStriker"></select></div><div><label>Opening Non-Striker</label><select id="openingNonStriker"></select></div><div><label>Opening Bowler</label><select id="openingBowler"></select></div></div>
+          <label>Follow / YouTube / WhatsApp Link</label><input id="followLink" placeholder="https://...">
+          <div class="actions"><button id="startMatchBtn" class="btn primary">Start Match</button><button id="copyLinkBtn" class="btn">Copy Public Link</button><button id="openUserBtn" class="btn light">Open User Page</button></div>
+        </div>
+        <div class="panel preview-card">
+          <h2>Public Link</h2>
+          <div id="publicLink" class="link-box">Start match first</div>
+          <h2>Current Setup</h2>
+          <div id="setupPreview" class="setup-preview">Select teams</div>
+        </div>
+      </section>
+
+      <section id="live" class="page live-grid">
+        <div class="left-stack">
+          <div class="panel score-panel"><div class="score-big"><span id="runs">0</span>/<span id="wkts">0</span></div><div>Overs <b id="overs">0.0</b> · CRR <b id="crr">0.00</b></div></div>
+          <div class="panel"><h2>Batsmen</h2><table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody id="batsmanRows"></tbody></table></div>
+          <div class="panel"><h2>Bowler</h2><table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody id="bowlerRows"></tbody></table></div>
+          <div class="panel small-metrics"><div><span>Target</span><b id="targetBox">-</b></div><div><span>Need</span><b id="needBox">-</b></div><div><span>RRR</span><b id="rrrBox">-</b></div><div><span>Partnership</span><b id="partnershipBox">0 (0)</b></div></div>
+        </div>
+        <div class="panel control-panel">
+          <h2>Ball Control</h2>
+          <div class="mode-row"><button data-mode="live" class="mode active">Live</button><button data-mode="paused" class="mode">Break</button><button data-mode="delay" class="mode">Delay</button><button id="lockBtn" class="btn warn">Lock</button><button id="unlockBtn" class="btn">Unlock</button></div>
+          <div class="extras"><label><input id="wide" type="checkbox"> Wide</label><label><input id="noball" type="checkbox"> No Ball</label><label><input id="bye" type="checkbox"> Bye</label><label><input id="legbye" type="checkbox"> Leg Bye</label><label><input id="wicket" type="checkbox"> Wicket</label></div>
+          <div class="run-grid"><button>0</button><button>1</button><button>2</button><button>3</button><button>4</button><button>5</button><button>6</button><button data-custom="1">+</button></div>
+          <div class="actions"><button id="undoBtn" class="btn danger">Undo</button><button id="clearTypesBtn" class="btn light">Clear Type</button><button id="swapBtn" class="btn">Swap Batsman</button><button id="retireBtn" class="btn">Retire</button><button id="changeBatsmanBtn" class="btn">Change Batsman</button><button id="changeBowlerBtn" class="btn">Change Bowler</button><button id="switchInningsBtn" class="btn warn">Switch Innings</button><button id="manualSaveBtn" class="btn primary">Save Score</button><button id="completeBtn" class="btn danger">Complete Match</button></div>
+          <h2>This Over</h2><div id="thisOver" class="ball-strip"></div>
+          <h2>Recent Balls</h2><div id="recentBalls" class="list"></div><div id="manualSaveNote" class="save-note">Tip: हर over के बाद Save Score दबाएँ.</div>
+        </div>
+        <div class="panel"><h2>Over Summary</h2><div id="overSummary" class="list"></div></div>
+        <div class="panel"><h2>Fall of Wickets</h2><div id="fowList" class="list"></div></div>
+        <div class="panel"><h2>Commentary</h2><div id="commentaryList" class="list"></div></div>
+      </section>
+
+      <section id="league" class="page league-grid">
+        <div class="panel"><h2>Create League</h2><label>League Name</label><input id="leagueName" placeholder="IPL 2026"><div class="grid3"><div><label>Short Name</label><input id="leagueShort" placeholder="IPL"></div><div><label>Season</label><input id="leagueSeason" placeholder="2026"></div><div><label>Default Overs</label><input id="leagueOvers" type="number" value="20"></div></div><label>Logo URL</label><input id="leagueLogo" placeholder="https://..."><input id="leagueLogoFile" type="file" accept="image/*"><label>Format</label><select id="leagueFormat"><option value="single">Single Round Robin</option><option value="double">Double Round Robin</option><option value="knockout">Knockout</option></select><label><input id="iplPlayoffs" type="checkbox" checked> Add IPL Playoffs</label><label>Select Teams</label><div id="leagueTeamChecks" class="check-grid"></div><div class="actions"><button id="generateScheduleBtn" class="btn">Generate Schedule</button><button id="saveLeagueBtn" class="btn primary">Save League</button><button id="clearLeagueBtn" class="btn light">Clear</button></div></div>
+        <div class="panel"><h2>Schedule</h2><div id="leagueSchedule" class="list big"></div><h2>Points Table</h2><table><thead><tr><th>Team</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>NRR</th></tr></thead><tbody id="leaguePoints"></tbody></table></div>
+      </section>
+
+      <section id="teams" class="page teams-grid">
+        <div class="panel"><h2>Create / Edit Team</h2><input id="teamId" type="hidden"><label>Team Name</label><input id="teamName"><label>Short Name</label><input id="teamShort"><label>Logo URL</label><input id="teamLogo"><input id="teamLogoFile" type="file" accept="image/*"><div class="actions"><button id="saveTeamBtn" class="btn primary">Save Team</button><button id="newTeamBtn" class="btn light">New</button><button id="deleteTeamBtn" class="btn danger">Delete</button></div><h2>Teams</h2><div id="teamList" class="list big"></div></div>
+        <div class="panel"><h2>Players</h2><div id="selectedTeamName">Select team</div><input id="playerId" type="hidden"><div class="grid2"><div><label>Player Name</label><input id="playerName"></div><div><label>Role</label><select id="playerRole"><option>Batsman</option><option>Bowler</option><option>All Rounder</option><option>Wicket Keeper</option></select></div></div><div class="grid3"><div><label>Batting Style</label><input id="battingStyle"></div><div><label>Bowling Style</label><input id="bowlingStyle"></div><div><label>Jersey No.</label><input id="jerseyNo"></div></div><label>Photo URL</label><input id="playerImage"><input id="playerImageFile" type="file" accept="image/*"><div class="actions"><button id="savePlayerBtn" class="btn primary">Save Player</button><button id="newPlayerBtn" class="btn light">New</button><button id="deletePlayerBtn" class="btn danger">Delete</button></div><div id="playerList" class="player-grid"></div></div>
+      </section>
+
+      <section id="history" class="page">
+        <div class="panel"><h2>Completed Match History</h2><div id="historyList" class="history-grid"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <div id="pickerModal" class="modal"><div class="modal-card"><h2 id="pickerTitle">Select</h2><div id="pickerList" class="picker-list"></div><input id="pickerManual" placeholder="Type name manually"><div class="actions"><button id="pickerCancel" class="btn light">Cancel</button><button id="pickerOk" class="btn primary">Use Name</button></div></div></div>
+
+  <div id="wicketModal" class="modal"><div class="modal-card"><h2>Wicket Detail</h2><div class="wicket-types"><button data-type="Bowled" class="active">Bowled</button><button data-type="LBW">LBW</button><button data-type="Caught">Caught</button><button data-type="Run Out">Run Out</button><button data-type="Stumping">Stumping</button><button data-type="Hit Wicket">Hit Wicket</button><button data-type="Retired Out">Retired Out</button></div><label id="outBatsmanLabel">Out Batsman</label><select id="outBatsmanSelect"></select><label>Fielder / Keeper / Thrower</label><input id="wicketHelper" placeholder="Optional"><label>Dismissal Note</label><input id="dismissalNote" placeholder="Optional"><div class="actions"><button id="wicketCancel" class="btn light">Cancel</button><button id="wicketDone" class="btn primary">Done</button></div></div></div>
+
+  <div id="inningsModal" class="modal"><div class="modal-card"><h2>Start New Innings</h2><p id="inningsTargetText"></p><label>Striker</label><select id="nextStriker"></select><label>Non-Striker</label><select id="nextNonStriker"></select><label>Opening Bowler</label><select id="nextBowler"></select><div class="actions"><button id="inningsCancel" class="btn light">Cancel</button><button id="inningsStart" class="btn primary">Start Innings</button></div></div></div>
+
+  <script type="module" src="./js/admin.js"></script>
 </body>
 </html>
-
-
