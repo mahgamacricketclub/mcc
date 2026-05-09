@@ -466,7 +466,7 @@ window.app = {
     s.partnershipRuns = 0; s.partnershipBalls = 0;
     this.lastOutSlot = outSlot;
     this.pendingWicket = null;
-    return `${label} (${w.type})`;
+    return `${label}`;
   },
 
   async promptNextBatsman() {
