@@ -26,17 +26,17 @@ window.app = {
 
   async bootstrap() {
     if (!MATCH_ID) {
-      this.noMatch("Latest live match खोज रहा है...");
+      this.noMatch("Loading...");
       try {
         const latest = await getLatestPublicMatch();
-        if (!latest?.matchId) return this.noMatch("अभी कोई live या completed match नहीं मिला.");
+        if (!latest?.matchId) return this.noMatch("Match Data Not Found.");
         MATCH_ID = latest.matchId;
         USER_MATCH_BACKUP_KEY = `cricket_user_match_backup_${MATCH_ID}`;
         this.store = latest;
         history.replaceState(null, "", `user.html?match=${encodeURIComponent(MATCH_ID)}`);
       } catch (error) {
         console.error(error);
-        return this.noMatch("Latest match load नहीं हुआ: " + error.message);
+        return this.noMatch("Match Not Found" + error.message);
       }
     }
     this.connect();
