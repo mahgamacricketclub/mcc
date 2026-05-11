@@ -3,7 +3,7 @@ import {
   loginAdmin, logoutAdmin, watchAuth, isAdmin,
   saveTeam, deleteTeam, listenTeams, savePlayer, deletePlayer, listenPlayers,
   getTeamsWithPlayers, saveLeague, deleteLeague, listenLeagues,
-  saveMatch, saveCompletedMatch, listenCompletedMatches, savePlayerMatchStats, saveSavedLink, makeId, safeId
+  saveMatch, saveCompletedMatch, listenCompletedMatches, updateCompletedMatchMvp, deleteCompletedMatch, getStoredScorecard, savePlayerMatchStats, saveSavedLink, makeId, safeId
 } from "./firebase-store.js";
 import { writeLiveMatch } from "./firebase-live.js";
 import { livePayload, storePayload, normalizeState, normalizeBatter, overText, calcSR, calcER, clone } from "./live-sync.js";
@@ -354,6 +354,7 @@ window.app = {
   teamsToMap() { const out = {}; this.teams.forEach(t => out[t.name] = (t.players || []).map(p => p.name)); return out; },
   teamInfoMap() { const out = {}; this.teams.forEach(t => { out[t.name] = { teamId: t.teamId, shortName: t.shortName || this.short(t.name), logo: t.logo || "", players: {} }; (t.players || []).forEach(p => out[t.name].players[p.name] = { ...p }); }); return out; },
   publicLink() { return new URL(`user.html?match=${this.currentMatchId || this.state.matchId || ""}`, location.href).href; },
+  qrCodeUrl(link) { return link ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}` : ""; },
   async copyPublicLink() { const link = this.publicLink(); try { await navigator.clipboard.writeText(link); this.toast("Public link copied"); } catch { prompt("Copy link", link); } },
 
   async scoreBall(run) {
@@ -724,6 +725,7 @@ window.app = {
   bindPicker() {
     $("pickerCancel").onclick = () => this.closePicker(null);
     $("pickerOk").onclick = () => this.closePicker($("pickerManual").value.trim());
+    $("mvpCancel").onclick = () => this.closeMvpModal();
   },
   pick(title, list = [], required = false) {
     return new Promise(resolve => {
@@ -802,10 +804,14 @@ window.app = {
     $("fowList").innerHTML = s.fallOfWickets.length ? s.fallOfWickets.map((x, i) => `<div class="item">${i + 1}. ${this.safe(x)}</div>`).join("") : "<div class='item'>No wickets</div>";
     $("commentaryList").innerHTML = s.commentary.length ? s.commentary.slice(0, 30).map(c => `<div class="item"><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div>`).join("") : "<div class='item'>No commentary</div>";
     document.querySelectorAll(".mode").forEach(b => b.classList.toggle("active", b.dataset.mode === s.liveControl.mode));
-    if (s.matchId) $("publicLink").textContent = this.publicLink();
+    if (s.matchId) {
+      $("publicLink").textContent = this.publicLink();
+      const qr = $("liveUserQrImg");
+      if (qr) qr.src = this.qrCodeUrl(this.publicLink());
+    }
     this.renderLeagueSchedule(); this.renderHistory();
   },
-  ballClass(x) { const t = String(x); if (t.includes("W")) return "wicket"; if (t === "4" || t === "6") return "boundary"; return ""; },
+  ballClass(x) { const t = String(x); if (/^W(?!d)/i.test(t)) return "wicket"; if (t === "4") return "four"; if (t === "6") return "six"; return ""; },
 
   renderTeams() {
     $("teamList").innerHTML = this.teams.map(t => `<div class="card-mini" data-id="${t.teamId}"><b>${this.safe(t.name)}</b><br><small>${this.safe(t.shortName || "")} · ${(t.players || []).length} players</small></div>`).join("") || "<div class='item'>No teams</div>";
@@ -837,8 +843,90 @@ window.app = {
   renderHistory() {
     const saved = this.getActiveBackup();
     const continueCard = saved ? `<div class="card-mini" style="border-color:#f59e0b;background:#fffbeb"><b>Unfinished Match Backup</b><br><small>${this.safe(saved.state.matchTitle || saved.matchId)}</small><p>${this.safe(saved.state.battingTeam?.name || "-")} ${Number(saved.state.runs || 0)}/${Number(saved.state.wkts || 0)} (${overText(saved.state.balls || 0)})</p><div class="actions"><button class="btn" onclick="app.continueRecoveredMatch()">Continue Match</button><button class="btn light" onclick="window.open('user.html?match=${saved.state.matchId}','_blank')">Open User</button></div></div>` : "";
-    const historyHtml = this.completed.map(m => `<div class="card-mini"><b>${this.safe(m.matchTitle || m.title || "Match")}</b><br><small>${this.safe(m.leagueName || "")}</small><p>${this.safe(m.firstInnings || "")} ${m.secondInnings ? " | " + this.safe(m.secondInnings) : ""}</p><b>${this.safe(m.winnerText || "-")}</b><div class="actions"><button class="btn light" onclick="window.open('user.html?match=${m.matchId}','_blank')">View</button><button class="btn" onclick="window.open('scorecard-download.html?match=${m.matchId}','_blank')">PDF</button></div></div>`).join("");
+    const historyHtml = this.completed.map(m => `<div class="card-mini"><b>${this.safe(m.matchTitle || m.title || "Match")}</b><br><small>${this.safe(m.leagueName || "")}</small><p>${this.safe(m.firstInnings || "")} ${m.secondInnings ? " | " + this.safe(m.secondInnings) : ""}</p><b>${this.safe(m.winnerText || "-")}</b><div class="actions"><button class="btn light" onclick="window.open('user.html?match=${m.matchId}','_blank')">View</button><button class="btn" onclick="window.open('scorecard-download.html?match=${m.matchId}','_blank')">PDF</button><button class="btn warn" onclick="app.editManOfMatch('${m.matchId}')">Edit MVP</button><button class="btn danger" onclick="app.deleteHistoryMatch('${m.matchId}')">Delete</button></div></div>`).join("");
     $("historyList").innerHTML = continueCard + (historyHtml || "<div class='item'>No completed matches</div>");
+  },
+
+  async editManOfMatch(matchId) {
+    const match = this.completed.find(m => m.matchId === matchId);
+    if (!match) return this.toast("Match not found", true);
+    let scorecard = match.fullScorecardData || match.scorecard || {};
+    const players = new Set();
+    const addPlayers = (items = []) => {
+      if (!items) return;
+      if (!Array.isArray(items)) items = [items];
+      items.forEach(inn => {
+        (inn?.battingScorecard || []).forEach(b => { if (b?.name) players.add(b.name); });
+      });
+    };
+    addPlayers(scorecard.firstInnings || scorecard.firstInningsDetail || []);
+    addPlayers(scorecard.secondInnings || scorecard.secondInningsDetail || []);
+    addPlayers(scorecard.completedInnings?.teamA || []);
+    addPlayers(scorecard.completedInnings?.teamB || []);
+    Object.values(scorecard.inningsDetails || {}).forEach(inn => addPlayers([inn]));
+    if (!players.size) {
+      const stored = await getStoredScorecard(matchId);
+      if (stored?.fullScorecardData) {
+        scorecard = stored.fullScorecardData;
+        addPlayers(scorecard.firstInnings || scorecard.firstInningsDetail || []);
+        addPlayers(scorecard.secondInnings || scorecard.secondInningsDetail || []);
+        addPlayers(scorecard.completedInnings?.teamA || []);
+        addPlayers(scorecard.completedInnings?.teamB || []);
+        Object.values(scorecard.inningsDetails || {}).forEach(inn => addPlayers([inn]));
+      }
+    }
+    if (!players.size) {
+      addPlayers(match.battingScorecard || []);
+      addPlayers(match.completedInnings?.teamA || []);
+      addPlayers(match.completedInnings?.teamB || []);
+    }
+    const playerList = Array.from(players).sort();
+    const currentMvp = match.playerOfMatch || match.mvp || "";
+    this.mvpCurrentMatch = matchId;
+    this.mvpCurrentMvp = currentMvp;
+    const html = playerList.length ? playerList.map(p => `<button class="picker-option" data-mvp="${this.safe(p)}" style="${p === currentMvp ? 'background:#10b981;color:white;' : ''}">${this.safe(p)}</button>`).join("") : `<div class="item">No players found</div>`;
+    $("mvpPlayerList").innerHTML = html;
+    document.querySelectorAll("#mvpPlayerList .picker-option").forEach(b => b.onclick = () => this.selectMvp(b.dataset.mvp));
+    $("mvpModal").classList.add("show");
+  },
+
+  selectMvp(playerName) {
+    const matchId = this.mvpCurrentMatch;
+    const currentMvp = this.mvpCurrentMvp;
+    if (playerName === currentMvp) {
+      this.closeMvpModal();
+      return;
+    }
+    updateCompletedMatchMvp(matchId, playerName).then(() => {
+      this.toast("Man of the Match updated to " + playerName);
+      this.completed = this.completed.map(m => m.matchId === matchId ? { ...m, playerOfMatch: playerName, mvp: playerName } : m);
+      this.renderHistory();
+      this.closeMvpModal();
+    }).catch(e => this.toast("Failed to update: " + e.message, true));
+  },
+
+  async deleteHistoryMatch(matchId) {
+    const enteredId = prompt(`Delete match ${matchId}?
+Type the match ID to confirm deletion:`);
+    if (enteredId === null) return;
+    if (enteredId.trim() !== matchId) {
+      this.toast("Match ID mismatch. Delete canceled.", true);
+      return;
+    }
+    try {
+      await deleteCompletedMatch(matchId);
+      this.toast("Match deleted successfully");
+      this.completed = this.completed.filter(m => m.matchId !== matchId);
+      this.renderHistory();
+    } catch (e) {
+      this.toast("Delete failed: " + e.message, true);
+    }
+  },
+
+  closeMvpModal() {
+    $("mvpModal").classList.remove("show");
+    this.mvpCurrentMatch = null;
+    this.mvpCurrentMvp = null;
   },
 
   toast(text, error = false) { const t = $("toast"); t.textContent = text; t.style.background = error ? "#b91c1c" : "#111827"; t.classList.add("show"); clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => t.classList.remove("show"), 2400); },

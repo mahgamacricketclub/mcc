@@ -25,15 +25,15 @@
     </header>
 
     <nav class="tabs">
-      <button class="tab active" data-page="setup">Match Setup</button>
-      <button class="tab" data-page="live">Live Match Control</button>
+      <button class="tab" data-page="setup">Match Setup</button>
+      <button class="tab active" data-page="live">Live Match Control</button>
       <button class="tab" data-page="league">Create League</button>
       <button class="tab" data-page="teams">Teams</button>
       <button class="tab" data-page="history">History</button>
     </nav>
 
     <main class="wrap">
-      <section id="setup" class="page active setup-grid">
+      <section id="setup" class="page setup-grid">
         <div class="panel">
           <h2>Match Setup</h2>
           <div class="grid2"><div><label>Select League</label><select id="setupLeague"></select></div><div><label>Match Type</label><input id="matchType" value="T20"></div></div>
@@ -52,7 +52,7 @@
         </div>
       </section>
 
-      <section id="live" class="page live-grid">
+      <section id="live" class="page active live-grid">
         <div class="left-stack">
           <div class="panel score-panel"><div class="score-big"><span id="runs">0</span>/<span id="wkts">0</span></div><div>Overs <b id="overs">0.0</b> · CRR <b id="crr">0.00</b></div></div>
           <div class="panel"><h2>Batsmen</h2><table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody id="batsmanRows"></tbody></table></div>
@@ -67,6 +67,13 @@
           <div class="actions"><button id="undoBtn" class="btn danger">Undo</button><button id="clearTypesBtn" class="btn light">Clear Type</button><button id="swapBtn" class="btn">Swap Batsman</button><button id="retireBtn" class="btn">Retire</button><button id="changeBatsmanBtn" class="btn">Change Batsman</button><button id="changeBowlerBtn" class="btn">Change Bowler</button><button id="switchInningsBtn" class="btn warn">Switch Innings</button><button id="manualSaveBtn" class="btn primary">Save Score</button><button id="completeBtn" class="btn danger">Complete Match</button></div>
           <h2>This Over</h2><div id="thisOver" class="ball-strip"></div>
           <h2>Recent Balls</h2><div id="recentBalls" class="list"></div><div id="manualSaveNote" class="save-note">Tip: हर over के बाद Save Score दबाएँ.</div>
+        </div>
+        <div class="panel qr-panel">
+          <h2>Live User QR</h2>
+          <div class="qr-wrapper">
+            <img id="liveUserQrImg" src="" alt="Live user QR code">
+            <p id="liveUserQrText">Start a live match to generate QR</p>
+          </div>
         </div>
         <div class="panel"><h2>Over Summary</h2><div id="overSummary" class="list"></div></div>
         <div class="panel"><h2>Fall of Wickets</h2><div id="fowList" class="list"></div></div>
@@ -94,6 +101,8 @@
   <div id="pickerModal" class="modal"><div class="modal-card"><h2 id="pickerTitle">Select</h2><div id="pickerList" class="picker-list"></div><input id="pickerManual" placeholder="Type name manually"><div class="actions"><button id="pickerCancel" class="btn light">Cancel</button><button id="pickerOk" class="btn primary">Use Name</button></div></div></div>
 
   <div id="wicketModal" class="modal"><div class="modal-card"><h2>Wicket Detail</h2><div class="wicket-types"><button data-type="Bowled" class="active">Bowled</button><button data-type="LBW">LBW</button><button data-type="Caught">Caught</button><button data-type="Run Out">Run Out</button><button data-type="Stumping">Stumping</button><button data-type="Hit Wicket">Hit Wicket</button><button data-type="Retired Out">Retired Out</button></div><label id="outBatsmanLabel">Out Batsman</label><select id="outBatsmanSelect"></select><label>Fielder / Keeper / Thrower</label><input id="wicketHelper" placeholder="Optional"><label>Dismissal Note</label><input id="dismissalNote" placeholder="Optional"><div class="actions"><button id="wicketCancel" class="btn light">Cancel</button><button id="wicketDone" class="btn primary">Done</button></div></div></div>
+
+  <div id="mvpModal" class="modal"><div class="modal-card"><h2>Select Man of the Match</h2><div id="mvpPlayerList" class="picker-list"></div><div class="actions"><button id="mvpCancel" class="btn light">Cancel</button></div></div></div>
 
   <div id="inningsModal" class="modal"><div class="modal-card"><h2>Start New Innings</h2><p id="inningsTargetText"></p><label>Striker</label><select id="nextStriker"></select><label>Non-Striker</label><select id="nextNonStriker"></select><label>Opening Bowler</label><select id="nextBowler"></select><div class="actions"><button id="inningsCancel" class="btn light">Cancel</button><button id="inningsStart" class="btn primary">Start Innings</button></div></div></div>
 

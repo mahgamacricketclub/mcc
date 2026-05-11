@@ -17,7 +17,8 @@ import {
   orderBy,
   limit,
   serverTimestamp,
-  deleteDoc
+  deleteDoc,
+  updateDoc
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { firebaseConfig } from "../firebase/firebase-config.js";
 
@@ -140,6 +141,27 @@ export async function saveCompletedMatch(matchId, payload) {
     setDoc(doc(firestoreDb, "completedMatches", matchId), { ...clean, matchId, status: "completed", matchFinished: true, updatedAt: serverTimestamp(), completedAt: serverTimestamp() }, { merge: true }),
     setDoc(doc(firestoreDb, "scorecards", matchId), { matchId, fullScorecardData: clean, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true })
   ]);
+}
+
+export async function updateCompletedMatchMvp(matchId, mvp) {
+  const update = { playerOfMatch: mvp, mvp, updatedAt: serverTimestamp() };
+  await Promise.all([
+    updateDoc(doc(firestoreDb, "matches", matchId), update),
+    updateDoc(doc(firestoreDb, "completedMatches", matchId), update)
+  ]);
+}
+
+export async function deleteCompletedMatch(matchId) {
+  await Promise.all([
+    deleteDoc(doc(firestoreDb, "matches", matchId)),
+    deleteDoc(doc(firestoreDb, "completedMatches", matchId)),
+    deleteDoc(doc(firestoreDb, "scorecards", matchId))
+  ]);
+}
+
+export async function getStoredScorecard(matchId) {
+  const snap = await getDoc(doc(firestoreDb, "scorecards", matchId));
+  return snap.exists() ? { matchId: snap.id, ...snap.data() } : null;
 }
 
 export function listenCompletedMatches(callback, onError) {

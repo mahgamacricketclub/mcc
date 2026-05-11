@@ -47,6 +47,9 @@ body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:#f3f
 .small-metrics div{border:1px solid #e2e8f0;border-radius:10px;padding:10px;background:#f8fafc}
 .small-metrics span{display:block;font-size:11px;text-transform:uppercase;color:#64748b;font-weight:900}
 .small-metrics b{display:block;margin-top:5px;font-size:18px}
+.qr-panel .qr-wrapper{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.qr-panel img{width:150px;height:150px;border:1px solid #e2e8f0;border-radius:16px;background:#fff}
+.qr-panel p{margin:0;color:#475569;font-size:13px}
 .mode-row{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px}
 .mode,.run-grid button,.wicket-types button{border:1px solid #cfd9e6;border-radius:10px;background:#fff;padding:10px;font-weight:900;cursor:pointer}
 .mode.active{background:#0f766e;color:#fff}
@@ -58,6 +61,8 @@ body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:#f3f
 .ball-strip{display:flex;gap:7px;flex-wrap:wrap}
 .ball{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:999px;background:#eef3f8;font-weight:900}
 .ball.wicket{background:#dc2626;color:#fff}
+.ball.four{background:#f97316;color:#fff}
+.ball.six{background:#15803d;color:#fff}
 .ball.boundary{background:#15803d;color:#fff}
 .list{border:1px solid #e2e8f0;border-radius:12px;background:#fff;padding:8px;max-height:280px;overflow:auto}
 .list.big{max-height:620px}

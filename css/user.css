@@ -25,7 +25,8 @@ body{margin:0;background:#f6f7f9;color:#202124;font-family:Inter,Segoe UI,Roboto
 .over-strip{width:min(100%,760px);margin:0 auto;background:#fff;border-bottom:1px solid #d8dce0;padding:9px 32px;overflow-x:auto}
 .over-track{display:flex;gap:0;min-width:max-content}.over-row{padding:0 10px;border-right:1px solid #d8dce0;color:#5f6368;font-size:13px}
 .ball{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;border-radius:5px;background:#f1f3f4;color:#202124;font-size:11px;font-weight:800;margin-left:4px}
-.ball.boundary{background:#18864b;color:#fff}
+.ball.four{background:#f97316;color:#fff}
+.ball.six{background:#18864b;color:#fff}
 .ball.wicket{background:#dc2626;color:#fff}
 .tabs{position:sticky;top:0;z-index:5;width:min(100%,760px);margin:0 auto;display:flex;gap:6px;overflow-x:auto;background:#fff;border-bottom:1px solid #dfe3e7;padding:8px 10px}
 .tab{border:1px solid #e2e8f0;background:#f8fafc;border-radius:999px;padding:8px 12px;font-weight:800;white-space:nowrap;cursor:pointer}
@@ -53,10 +54,10 @@ body{margin:0;background:#f6f7f9;color:#202124;font-family:Inter,Segoe UI,Roboto
  .avatar img{width:100%;height:100%;object-fit:cover}
  .match-card-mini{cursor:pointer}
  .match-card-mini:hover{border-color:#18864b}
- .modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:flex-end;justify-content:center;padding:0;z-index:20}
+ .modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
  .modal.show{display:flex}
- .modal-card{position:relative;width:min(560px,100%);max-height:88vh;overflow:auto;background:#fff;border-radius:16px 16px 0 0;padding:18px}
- .modal-card button#modalClose{position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:50%;border:1px solid #dfe5eb;background:#fff;font-size:20px}
+ .modal-card{position:relative;width:min(560px,100%);max-height:88vh;overflow:auto;background:#fff;border-radius:16px;padding:18px}
+ .modal-card button#modalClose{position:absolute;right:12px;top:12px;width:34px;height:34px;border-radius:50%;border:1px solid #dfe5eb;background:#fff;font-size:20}
  .muted{color:#64748b}
  @media(max-width:520px)
  {.score-header{padding:16px 12px 12px}
