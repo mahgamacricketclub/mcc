@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBS Overlay Admin</title>
+<style>
+  :root{--bg:#0b1220;--panel:#111827;--panel2:#172033;--line:#263244;--text:#e5edf7;--muted:#94a3b8;--accent:#16f2b3;--danger:#ef4444;--warn:#f59e0b}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:linear-gradient(135deg,#080d18,#111827 42%,#0f172a);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+  header{flex:0 0 auto;position:relative;z-index:5;background:rgba(8,13,24,.94);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:14px 18px;display:flex;gap:12px;align-items:center;justify-content:space-between}
+  h1{font-size:22px;margin:0} h2{font-size:16px;margin:0 0 12px} h3{font-size:13px;margin:16px 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+  .wrap{flex:1 1 auto;min-height:0;display:grid;grid-template-columns:390px minmax(0,1fr);gap:16px;padding:16px;overflow:hidden}
+  .panel{background:rgba(17,24,39,.92);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:0 16px 42px rgba(0,0,0,.25)}
+  aside.panel{min-height:0;overflow-y:auto;overscroll-behavior:contain}
+  label{display:block;font-size:12px;color:var(--muted);font-weight:800;margin:8px 0 5px}
+  input,select,textarea{width:100%;border:1px solid #344155;background:#0b1220;color:var(--text);border-radius:10px;padding:10px 11px;font:inherit;outline:none}
+  textarea{min-height:70px;resize:vertical}
+  input[type="checkbox"]{width:auto}
+  button{border:0;border-radius:10px;background:#243244;color:#fff;padding:9px 11px;font-weight:900;cursor:pointer}
+  button.primary{background:linear-gradient(135deg,#0891b2,#10b981)}
+  button.warn{background:#a16207}
+  button.danger{background:#991b1b}
+  button.light{background:#334155}
+  button.small{padding:6px 8px;font-size:12px}
+  .row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .card-row{display:grid;grid-template-columns:26px 1fr auto auto auto;gap:7px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07);cursor:pointer}
+  .card-row span{font-weight:850}
+  .scene-grid,.hot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+  .hot-grid button{background:#1f2937}.hot-grid button:nth-child(1),.hot-grid button:nth-child(2){background:#1d4ed8}.hot-grid button:nth-child(3){background:#b91c1c}
+  .preview-shell{min-height:0;overflow:hidden}
+  .preview-frame{width:100%;overflow:hidden;border-radius:14px;border:1px solid var(--line);background:#020617;padding:12px}
+  main.preview-shell>.panel{height:100%;overflow:hidden;display:flex;flex-direction:column}
+  main.preview-shell .preview-frame{flex:0 0 auto}
+  .preview-stage{width:1280px;height:720px;transform-origin:top left}
+  iframe{width:1280px;height:720px;border:0;background:transparent}
+  .hint{font-size:12px;color:var(--muted);line-height:1.5}
+  .copybox{font-family:Consolas,monospace;font-size:12px;word-break:break-all;background:#050914;border:1px solid var(--line);border-radius:10px;padding:10px;margin:6px 0;color:#c4f1ff}
+  .toast{position:fixed;right:16px;bottom:16px;background:#052e2b;color:#d1fae5;border:1px solid #14b8a6;border-radius:12px;padding:12px 14px;font-weight:850;display:none;z-index:20}
+  .toast.show{display:block}
+  .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+  .tabs button.active{background:var(--accent);color:#042018}
+  .tabpage{display:none}.tabpage.active{display:block}
+  @media(max-width:980px){body{overflow:auto}.wrap{grid-template-columns:1fr;overflow:visible}.preview-shell{position:static}aside.panel{overflow:visible}header{align-items:flex-start;flex-direction:column}.scene-grid,.hot-grid{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>OBS Cricket Overlay Admin</h1><div class="hint">OBS Browser Source: Width <b>1280</b>, Height <b>720</b>. Coordinates are always saved in 1280x720.</div></div>
+  <div class="row" style="max-width:760px;width:100%">
+    <input id="matchId" placeholder="Match ID" value="liveMatch1">
+    <select id="matchSelect" title="Select live match"><option value="">Select live match</option></select>
+    <button id="loadBtn">Load</button>
+    <button id="lockMatchBtn" class="light">Lock ID</button>
+    <button id="pushLiveBtn" class="primary">Push Live</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <aside class="panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="cards">Cards</button>
+      <button class="tab" data-tab="scenes">Scenes</button>
+      <button class="tab" data-tab="manual">Manual</button>
+      <button class="tab" data-tab="style">Style</button>
+      <button class="tab" data-tab="links">OBS Links</button>
+    </div>
+
+    <section id="cards" class="tabpage active">
+      <h2>Show / Hide Cards</h2>
+      <div class="actions" style="margin-bottom:10px">
+        <button id="clearAllCards" class="danger">Clear All Cards</button>
+      </div>
+      <div id="cardsList"></div>
+    </section>
+
+    <section id="scenes" class="tabpage">
+      <h2>One Click Scenes</h2>
+      <div id="sceneGrid" class="scene-grid"></div>
+      <h3>Hot Buttons</h3>
+      <div id="hotGrid" class="hot-grid"></div>
+    </section>
+
+    <section id="manual" class="tabpage">
+      <h2>Manual Text</h2>
+      <label>Live Status</label><input id="manualStatus">
+      <label>Manual Ticker Text</label><textarea id="manualTicker"></textarea>
+      <label>Manual Commentary</label><textarea id="manualCommentary"></textarea>
+      <label>Match Summary / Result Text</label><textarea id="manualSummary"></textarea>
+      <label>Last Wicket</label><input id="manualLastWicket">
+      <label>Next Batter</label><input id="manualNextBatter">
+      <div class="grid2"><div><label>Moment Player</label><input id="manualMomentPlayer"></div><div><label>Moment Detail</label><input id="manualMomentDetail"></div></div>
+      <div class="grid2"><div><label>Powerplay Runs</label><input id="manualPowerplayRuns"></div><div><label>Powerplay Wickets</label><input id="manualPowerplayWickets"></div></div>
+      <div class="grid2"><div><label>Powerplay Overs</label><input id="manualPowerplayOvers"></div><div><label>Win Probability</label><input id="manualWinProbability" placeholder="TSX 62%"></div></div>
+    </section>
+
+    <section id="style" class="tabpage">
+      <h2>Style Settings</h2>
+      <div class="grid2"><div><label>Sponsor Name</label><input id="sponsor" value="TECH SOURCE"></div><div><label>Event Name</label><input id="eventName" value="Live Cricket"></div></div>
+      <div class="grid2"><div><label>Accent Color</label><input id="accent" type="color" value="#16f2b3"></div><div><label>Animation</label><select id="animation"><option value="slide">Slide</option><option value="fade">Fade</option><option value="zoom">Zoom</option></select></div></div>
+      <div class="grid2"><div><label>Opacity</label><input id="opacity" type="number" min="0" max="1" step=".05" value="1"></div><div><label>Z-index</label><input id="zIndex" type="number" value="10"></div></div>
+      <div class="grid2"><div><label>Poll Interval</label><input id="poll" type="number" value="1000"></div><div><label>Hot Duration</label><input id="hotDuration" type="number" value="2200"></div></div>
+      <label><input id="debug" type="checkbox"> Debug overlay</label>
+      <label><input id="autoTriggers" type="checkbox" checked> Auto trigger FOUR/SIX/WICKET</label>
+      <label><input id="autoScenes" type="checkbox"> Auto scene toggle</label>
+      <h3>Position Editor</h3>
+      <div class="actions"><button id="resetPositions" class="warn">Reset Positions</button><button id="saveLocal">Save Local</button><button id="clearLocal" class="danger">Clear Local</button></div>
+      <p class="hint">Preview me card drag/resize karo. Push Live par positions Firebase me save ho jayengi.</p>
+    </section>
+
+    <section id="links" class="tabpage">
+      <h2>OBS Links</h2>
+      <div class="hint">OBS Browser Source instruction: Width: <b>1280</b>, Height: <b>720</b></div>
+      <h3>Main OBS URL</h3><div id="mainUrl" class="copybox"></div><div class="actions"><button data-copy="mainUrl">Copy URL</button><button id="openOverlay">Open Overlay</button></div>
+      <h3>Separate Source URLs</h3><div id="sourceUrls"></div>
+    </section>
+  </aside>
+
+  <main class="preview-shell">
+    <div class="panel">
+      <div class="row"><h2>Live Preview</h2><div class="actions"><button id="refreshPreview">Refresh Preview</button><button id="toggleEdit" class="light">Edit Mode On</button></div></div>
+      <div class="preview-frame"><div id="previewStage" class="preview-stage"><iframe id="preview"></iframe></div></div>
+      <p class="hint">Preview visually scale ho sakta hai, lekin overlay ka actual canvas fixed 1280x720 hai.</p>
+    </div>
+  </main>
+</div>
+<div id="toast" class="toast"></div>
+
+<script type="module">
+import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getDatabase, ref, onValue, update, get, query, orderByChild, limitToLast, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBgqY7cQmXBUlIGQPw50NEAd6lhcAjvs_I",
+  authDomain: "techsource-d11c4.firebaseapp.com",
+  databaseURL: "https://techsource-d11c4-default-rtdb.firebaseio.com",
+  projectId: "techsource-d11c4",
+  storageBucket: "techsource-d11c4.firebasestorage.app",
+  messagingSenderId: "756968347637",
+  appId: "1:756968347637:web:cc27b4ede42ca3c5f572bc"
+};
+
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const $ = id => document.getElementById(id);
+const cardThemes = ["matchboard","inningsboard","chaseboard","resultboard","scorestrip","tournamenttable","playerstatsboard","battingcard","bowlingcard","partnershipboard","fallwicketsboard","overbyoverboard","squadboard","tossboard","nextmatchboard","scorebug","lower","topbar","vertical","minimal","commentary","wicket","target","broadcast","player","partnership","rate","slate","sponsor","ticker","squad","neon","powerplay","fow","lastwicket","bowling","winprob","oversummary","nextbatter","summary","rrmeter","moment","toss","playingxi","battercomp","bowlercomp","timeline","result","venue","inningsbreak","milestone","review"];
+const sceneMap = {
+  Live:["scorestrip","sponsor"],
+  Normal:["scorebug","ticker","sponsor"],
+  Compact:["minimal","ticker","sponsor"],
+  Wicket:["scorestrip","lastwicket","ticker"],
+  Boundary:["scorestrip","oversummary","ticker"],
+  Chase:["scorestrip","rate","rrmeter","winprob"],
+  Powerplay:["scorestrip","powerplay","sponsor"],
+  Batting:["scorestrip","player","partnership"],
+  Bowling:["scorestrip","bowling","oversummary"],
+  Review:["scorestrip","review"],
+  Timeline:["scorestrip","timeline"],
+  Break:["inningsbreak","summary","sponsor"],
+  "Pre Match":["slate","toss","playingxi","venue","sponsor"],
+  Result:["result","moment","summary","ticker"],
+  Summary:["matchboard"],
+  "TV Strip":["scorestrip"],
+  "Points Table":["tournamenttable"],
+  "Player Stats":["playerstatsboard"],
+  "Batting Card":["battingcard"],
+  "Bowling Card":["bowlingcard"],
+  "Partnership Board":["partnershipboard"],
+  "FOW Board":["fallwicketsboard"],
+  "Over Board":["overbyoverboard"],
+  "Squad Board":["squadboard"],
+  "Toss Board":["tossboard"],
+  "Next Match":["nextmatchboard"]
+};
+const hotTypes = ["FOUR","SIX","WICKET","50","100","REVIEW","POWERPLAY","TIMEOUT","DRINKS","TARGET","BATTER","PARTNERSHIP"];
+const state = { matchId:"liveMatch1", selected:new Set(["scorebug","ticker","sponsor"]), positions:{}, edit:true, unsub:null, control:{} };
+const LOCKED_MATCH_KEY = "obs_admin_locked_match_id";
+
+function init(){
+  buildCards(); buildScenes(); buildHot(); bind();
+  applyLockedMatch();
+  loadLocal();
+  fetchLiveMatches();
+  loadMatch();
+  renderLinks();
+  refreshPreview();
+  scalePreview();
+}
+
+function buildCards(){
+  $("cardsList").innerHTML = cardThemes.map(t => `<div class="card-row" data-toggle-card="${t}"><input type="checkbox" id="show_${t}" data-theme="${t}"><span>${t}</span><button class="small" data-preview="${t}">Preview</button><button class="small primary" data-push="${t}">Push</button><button class="small danger" data-unpush="${t}">Unpush</button></div>`).join("");
+  cardThemes.forEach(t => $(`show_${t}`).checked = state.selected.has(t));
+}
+function buildScenes(){ $("sceneGrid").innerHTML = Object.keys(sceneMap).map(s => `<button data-scene="${s}">${s}</button>`).join(""); }
+function buildHot(){ $("hotGrid").innerHTML = hotTypes.map(h => `<button data-hot="${h}">${h}</button>`).join(""); }
+
+function bind(){
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => openTab(b.dataset.tab));
+  $("loadBtn").onclick = loadMatch;
+  $("lockMatchBtn").onclick = toggleMatchLock;
+  $("pushLiveBtn").onclick = pushLive;
+  $("clearAllCards").onclick = clearAllCards;
+  $("refreshPreview").onclick = refreshPreview;
+  $("toggleEdit").onclick = () => { state.edit = !state.edit; $("toggleEdit").textContent = state.edit ? "Edit Mode On" : "Edit Mode Off"; refreshPreview(); };
+  $("resetPositions").onclick = () => { state.positions = {}; refreshPreview(); toast("Positions reset. Push Live to save reset."); };
+  $("saveLocal").onclick = saveLocal;
+  $("clearLocal").onclick = () => { localStorage.removeItem(localKey()); toast("Local settings cleared"); };
+  $("openOverlay").onclick = () => window.open(mainUrl(false), "_blank");
+  $("matchId").addEventListener("change", loadMatch);
+  $("matchSelect").addEventListener("change", () => {
+    if (!$("matchSelect").value) return;
+    $("matchId").value = $("matchSelect").value;
+    loadMatch();
+  });
+  cardThemes.forEach(t => {
+    $(`show_${t}`).onchange = e => { e.target.checked ? state.selected.add(t) : state.selected.delete(t); refreshPreview(); renderLinks(); };
+  });
+  document.addEventListener("click", e => {
+    const p=e.target.dataset.preview, push=e.target.dataset.push, un=e.target.dataset.unpush, scene=e.target.dataset.scene, hot=e.target.dataset.hot, copy=e.target.dataset.copy;
+    const toggleCard = e.target.closest(".card-row")?.dataset.toggleCard;
+    if (p) { state.selected = new Set([p]); syncChecks(); refreshPreview(); }
+    if (push) { state.selected.add(push); syncChecks(); pushLive(); }
+    if (un) { state.selected.delete(un); syncChecks(); pushLive(); }
+    if (toggleCard && !e.target.closest("button") && e.target.type !== "checkbox") {
+      state.selected.has(toggleCard) ? state.selected.delete(toggleCard) : state.selected.add(toggleCard);
+      syncChecks();
+      refreshPreview();
+    }
+    if (scene) applyScene(scene);
+    if (hot) triggerHot(hot);
+    if (copy) copyText($(copy).textContent);
+    if (e.target.dataset.copyUrl) copyText(e.target.dataset.copyUrl);
+  });
+  window.addEventListener("message", e => {
+    if (e.data?.type === "obs-positions") {
+      state.positions = cleanPositions(e.data.positions || {});
+      saveLocal(false);
+    }
+  });
+  window.addEventListener("resize", scalePreview);
+  ["sponsor","eventName","accent","opacity","zIndex","animation","poll","debug","autoTriggers","autoScenes","hotDuration"].forEach(id => $(id).addEventListener("input", () => { refreshPreview(); renderLinks(); }));
+}
+
+function applyLockedMatch(){
+  const locked = localStorage.getItem(LOCKED_MATCH_KEY) || "";
+  if (locked) $("matchId").value = locked;
+  setMatchLockUi(!!locked);
+}
+
+function setMatchLockUi(locked){
+  $("matchId").disabled = locked;
+  $("matchSelect").disabled = locked;
+  $("loadBtn").disabled = locked;
+  $("lockMatchBtn").textContent = locked ? "Unlock ID" : "Lock ID";
+  $("lockMatchBtn").classList.toggle("danger", locked);
+  $("lockMatchBtn").classList.toggle("light", !locked);
+}
+
+function toggleMatchLock(){
+  const locked = localStorage.getItem(LOCKED_MATCH_KEY);
+  if (locked) {
+    localStorage.removeItem(LOCKED_MATCH_KEY);
+    setMatchLockUi(false);
+    toast("Match ID unlocked");
+    return;
+  }
+  const id = $("matchId").value.trim();
+  if (!id) return toast("Match ID required");
+  localStorage.setItem(LOCKED_MATCH_KEY, id);
+  state.matchId = id;
+  setMatchLockUi(true);
+  loadMatch();
+  toast("Match ID locked");
+}
+
+function openTab(id){
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));
+  document.querySelectorAll(".tabpage").forEach(p=>p.classList.toggle("active",p.id===id));
+}
+
+function loadMatch(){
+  state.matchId = $("matchId").value.trim() || "liveMatch1";
+  setSelectedMatchOption(state.matchId);
+  fetchLiveMatches(false);
+  if (state.unsub) state.unsub();
+  loadLocal();
+  state.unsub = onValue(ref(db, `obsControl/${state.matchId}`), snap => {
+    state.control = snap.val() || {};
+    hydrate(state.control);
+    refreshPreview();
+  });
+  renderLinks();
+}
+
+async function fetchLiveMatches(showToast = false){
+  try {
+    const snap = await get(query(ref(db, "liveMatches"), orderByChild("updatedAt"), limitToLast(30)));
+    const rows = [];
+    snap.forEach(child => rows.push({ matchId: child.key, ...(child.val() || {}) }));
+    rows.sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+    renderMatchOptions(rows);
+    if (showToast) toast("Live match list refreshed");
+  } catch (error) {
+    console.warn(error);
+    if (showToast) toast("Live matches fetch failed");
+  }
+}
+
+function renderMatchOptions(rows = []){
+  const current = $("matchId").value.trim();
+  const options = [`<option value="">Select live match</option>`].concat(rows.map(m => {
+    const title = m.title || m.matchTitle || `${m.battingTeam?.name || m.battingTeam || "Match"}${m.bowlingTeam ? " vs " + (m.bowlingTeam?.name || m.bowlingTeam) : ""}`;
+    const score = m.runs !== undefined ? ` · ${m.runs}/${m.wickets ?? m.wkts ?? 0}` : "";
+    return `<option value="${escapeAttr(m.matchId)}">${escapeHtml(title)} (${escapeHtml(m.matchId)})${escapeHtml(score)}</option>`;
+  }));
+  $("matchSelect").innerHTML = options.join("");
+  setSelectedMatchOption(current);
+}
+
+function setSelectedMatchOption(matchId){
+  const select = $("matchSelect");
+  if ([...select.options].some(o => o.value === matchId)) select.value = matchId;
+  else select.value = "";
+}
+
+function hydrate(c){
+  if (!c || !Object.keys(c).length) return;
+  state.selected = new Set(Array.isArray(c.showThemes) ? c.showThemes : String(c.showThemes || "").split(",").filter(Boolean));
+  if (!state.selected.size) state.selected = new Set(["scorebug","ticker","sponsor"]);
+  state.positions = cleanPositions(c.positions || state.positions || {});
+  ["sponsor","eventName","accent","opacity","zIndex","animation","poll","hotDuration"].forEach(id => { if (c[id] !== undefined) $(id).value = c[id]; });
+  ["manualStatus","manualTicker","manualCommentary","manualSummary","manualLastWicket","manualNextBatter","manualMomentPlayer","manualMomentDetail","manualPowerplayRuns","manualPowerplayWickets","manualPowerplayOvers","manualWinProbability"].forEach(id => { if (c[id] !== undefined) $(id).value = c[id] || ""; });
+  ["debug","autoTriggers","autoScenes"].forEach(id => { if (c[id] !== undefined) $(id).checked = !!c[id]; });
+  syncChecks();
+}
+
+function syncChecks(){ cardThemes.forEach(t => { const el=$(`show_${t}`); if (el) el.checked = state.selected.has(t); }); renderLinks(); }
+function applyScene(name){ state.selected = new Set(sceneMap[name] || []); syncChecks(); refreshPreview(); toast(`${name} scene selected`); }
+
+function clearAllCards(){
+  state.selected = new Set();
+  syncChecks();
+  refreshPreview();
+  toast("All cards cleared. Push Live to apply.");
+}
+function triggerHot(type, push=true){
+  const detail = type === "FOUR" || type === "SIX" ? "Boundary!" : type === "WICKET" ? "Big breakthrough" : type;
+  $("manualMomentDetail").value = $("manualMomentDetail").value || detail;
+  const hotDuration = Number($("hotDuration").value || 2200);
+  const hotNonce = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const patch = { hot:true, hotNonce, hotType:type, hotText:detail, hotDuration, updatedAt:serverTimestamp() };
+  if (push) {
+    update(ref(db, `obsControl/${state.matchId}`), patch)
+      .then(() => {
+        toast(`${type} pushed`);
+        setTimeout(() => {
+          update(ref(db, `obsControl/${state.matchId}`), { hot:false, updatedAt:serverTimestamp() }).catch(console.warn);
+        }, hotDuration + 250);
+      })
+      .catch(e=>toast(e.message));
+  }
+}
+
+function collect(){
+  return {
+    enabled:true,
+    mode:"custom",
+    showThemes:[...state.selected],
+    sponsor:$("sponsor").value.trim(),
+    eventName:$("eventName").value.trim(),
+    accent:$("accent").value,
+    opacity:Number($("opacity").value || 1),
+    zIndex:Number($("zIndex").value || 10),
+    animation:$("animation").value,
+    poll:Number($("poll").value || 1000),
+    debug:$("debug").checked,
+    autoTriggers:$("autoTriggers").checked,
+    autoScenes:$("autoScenes").checked,
+    hot:false,
+    positions:cleanPositions(state.positions || {}),
+    hotDuration:Number($("hotDuration").value || 2200),
+    manualStatus:$("manualStatus").value.trim(),
+    manualTicker:$("manualTicker").value.trim(),
+    manualCommentary:$("manualCommentary").value.trim(),
+    manualSummary:$("manualSummary").value.trim(),
+    manualLastWicket:$("manualLastWicket").value.trim(),
+    manualNextBatter:$("manualNextBatter").value.trim(),
+    manualMomentPlayer:$("manualMomentPlayer").value.trim(),
+    manualMomentDetail:$("manualMomentDetail").value.trim(),
+    manualPowerplayRuns:$("manualPowerplayRuns").value.trim(),
+    manualPowerplayWickets:$("manualPowerplayWickets").value.trim(),
+    manualPowerplayOvers:$("manualPowerplayOvers").value.trim(),
+    manualWinProbability:$("manualWinProbability").value.trim(),
+    updatedAt:serverTimestamp()
+  };
+}
+
+function cleanPositions(positions = {}){
+  const out = {};
+  Object.entries(positions || {}).forEach(([id,p]) => {
+    const w = Number(p?.w);
+    const h = Number(p?.h);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w < 70 || h < 34) return;
+    out[id] = {
+      x:Math.max(0, Math.min(1260, Math.round(Number(p.x) || 0))),
+      y:Math.max(0, Math.min(700, Math.round(Number(p.y) || 0))),
+      w:Math.round(w),
+      h:Math.round(h)
+    };
+  });
+  return out;
+}
+
+async function pushLive(){
+  const data = collect();
+  await update(ref(db, `obsControl/${state.matchId}`), data);
+  saveLocal(false);
+  toast("OBS control pushed live");
+}
+
+function refreshPreview(){
+  $("preview").src = mainUrl(true);
+  scalePreview();
+}
+function scalePreview(){
+  const shell = document.querySelector(".preview-frame");
+  const widthScale = Math.max(.18, (shell.clientWidth - 24) / 1280);
+  const scale = Math.min(widthScale, .72);
+  $("previewStage").style.transform = `scale(${scale})`;
+  $("previewStage").style.width = "1280px";
+  $("previewStage").style.height = `${720 * scale}px`;
+}
+function mainUrl(preview){
+  if (!preview) {
+    const qs = new URLSearchParams();
+    qs.set("match", state.matchId);
+    return new URL(`obs.html?${qs.toString()}`, location.href).href;
+  }
+  const qs = new URLSearchParams();
+  qs.set("match", state.matchId);
+  qs.set("layout", "custom");
+  qs.set("show", [...state.selected].join(","));
+  qs.set("sponsor", $("sponsor").value.trim());
+  qs.set("event", $("eventName").value.trim());
+  qs.set("accent", $("accent").value);
+  qs.set("opacity", $("opacity").value);
+  qs.set("z", $("zIndex").value);
+  qs.set("anim", $("animation").value);
+  if ($("debug").checked) qs.set("debug","1");
+  if (preview) {
+    qs.set("preview","1");
+    const clean = cleanPositions(state.positions || {});
+    if (Object.keys(clean).length) qs.set("positions", JSON.stringify(clean));
+    if (state.edit) qs.set("edit","1");
+    qs.set("_", Date.now().toString());
+  }
+  return new URL(`obs.html?${qs.toString()}`, location.href).href;
+}
+function renderLinks(){
+  $("mainUrl").textContent = mainUrl(false);
+  $("sourceUrls").innerHTML = cardThemes.slice(0,18).map(t => {
+    const url = new URL(`obs.html?match=${encodeURIComponent(state.matchId)}&layout=custom&show=${encodeURIComponent(t)}&sponsor=${encodeURIComponent($("sponsor").value)}&event=${encodeURIComponent($("eventName").value)}&accent=${encodeURIComponent($("accent").value)}`, location.href).href;
+    return `<div class="copybox"><b>${t}</b><br>${url}</div><button class="small" data-copy-url="${url}">Copy ${t}</button>`;
+  }).join("");
+}
+
+function localKey(){ return `obs_admin_${state.matchId}`; }
+function saveLocal(show=true){ localStorage.setItem(localKey(), JSON.stringify({ selected:[...state.selected], positions:cleanPositions(state.positions), values:collectForLocal() })); if(show) toast("Saved locally"); }
+function collectForLocal(){
+  const ids=["sponsor","eventName","accent","opacity","zIndex","animation","poll","debug","autoTriggers","autoScenes","hotDuration","manualStatus","manualTicker","manualCommentary","manualSummary","manualLastWicket","manualNextBatter","manualMomentPlayer","manualMomentDetail","manualPowerplayRuns","manualPowerplayWickets","manualPowerplayOvers","manualWinProbability"];
+  const out={}; ids.forEach(id=>out[id]=$(id).type==="checkbox"?$(id).checked:$(id).value); return out;
+}
+function loadLocal(){
+  try {
+    const saved = JSON.parse(localStorage.getItem(localKey()) || "{}");
+    if (saved.selected) state.selected = new Set(saved.selected);
+    if (saved.positions) state.positions = saved.positions;
+    Object.entries(saved.values || {}).forEach(([id,v]) => { if ($(id)) $(id).type==="checkbox" ? $(id).checked=!!v : $(id).value=v; });
+    syncChecks();
+  } catch {}
+}
+function copyText(text){ navigator.clipboard?.writeText(text).then(()=>toast("Copied")); }
+function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>t.classList.remove("show"),2200); }
+function escapeHtml(v){ return String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])); }
+function escapeAttr(v){ return escapeHtml(v).replace(/`/g,""); }
+
+init();
+</script>
+</body>
+</html>

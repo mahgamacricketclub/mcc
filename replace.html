@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Firestore Find & Replace Tool</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f6fa;
+      color: #142033;
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 14px;
+    }
+
+    .card {
+      background: #fff;
+      border: 1px solid #d8e1ec;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .06);
+      margin-bottom: 14px;
+    }
+
+    h1, h2 {
+      margin: 0 0 10px;
+    }
+
+    h1 { font-size: 24px; }
+    h2 { font-size: 18px; }
+
+    p {
+      color: #64748b;
+      line-height: 1.5;
+    }
+
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      color: #475569;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid #cfd9e6;
+      border-radius: 10px;
+      padding: 11px;
+      font-size: 14px;
+      background: #fff;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #0f766e;
+      box-shadow: 0 0 0 3px rgba(15, 118, 110, .13);
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .grid3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 15px;
+      font-weight: 900;
+      cursor: pointer;
+      background: #e8eef5;
+      color: #1f2f46;
+    }
+
+    button.primary {
+      background: #0f766e;
+      color: #fff;
+    }
+
+    button.danger {
+      background: #b91c1c;
+      color: #fff;
+    }
+
+    button.warn {
+      background: #b45309;
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .note {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .success {
+      background: #ecfdf5;
+      border: 1px solid #99f6e4;
+      color: #065f46;
+      padding: 12px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .result {
+      white-space: pre-wrap;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 12px;
+      padding: 12px;
+      max-height: 380px;
+      overflow: auto;
+      font-size: 13px;
+    }
+
+    .ok { color: #0f766e; font-weight: 900; }
+    .bad { color: #b91c1c; font-weight: 900; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      margin-top: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid #e8eef5;
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: #475569;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    td input[type="checkbox"] {
+      width: auto;
+      transform: scale(1.15);
+    }
+
+    td input[type="text"] {
+      padding: 8px;
+    }
+
+    .mini {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: #eef3f8;
+      font-weight: 900;
+      font-size: 12px;
+      margin: 2px;
+    }
+
+    .top-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 760px) {
+      .grid2, .grid3 {
+        grid-template-columns: 1fr;
+      }
+
+      .wrap {
+        margin: 8px auto;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      th, td {
+        padding: 8px 5px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Firestore Find & Replace Tool</h1>
+      <p>
+        यह tool Firestore में saved text को find करके replace करने के लिए है।
+        इसमें तुम खुद Find Text लिख सकते हो, जैसे <b>Bowled</b>, <b>W (</b>, <b>4B</b>, <b>LB</b>, <b>Wd</b>.
+      </p>
+
+      <div class="note">
+        पहले <b>Find / Scan</b> दबाओ। जो text मिलेगा वह नीचे table में आएगा।
+        फिर New Text भरो और <b>Replace Selected</b> या <b>Replace All Found</b> दबाओ।
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Admin Login</h2>
+
+      <div class="grid2">
+        <div>
+          <label>Email</label>
+          <input id="email" type="email" placeholder="admin@example.com">
+        </div>
+
+        <div>
+          <label>Password</label>
+          <input id="password" type="password" placeholder="password">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="loginBtn" class="primary">Login</button>
+        <button id="logoutBtn">Logout</button>
+      </div>
+
+      <p id="authStatus">Not logged in</p>
+    </div>
+
+    <div class="card">
+      <h2>Collection Select</h2>
+
+      <label>Collection</label>
+      <select id="collectionName">
+        <option value="matches">matches</option>
+        <option value="completedMatches">completedMatches</option>
+        <option value="both" selected>Both: matches + completedMatches</option>
+      </select>
+    </div>
+
+    <div class="card">
+      <div class="top-line">
+        <h2>Find / Scan Any Text</h2>
+        <span class="pill">Generic Search</span>
+      </div>
+
+      <label>Find Text</label>
+      <input id="findText" placeholder="Example: Bowled, W (, 4B, Caught, LB, Wd">
+
+      <label>Default Replace Text</label>
+      <input id="defaultReplaceText" placeholder="Example: W">
+
+      <p class="mini">
+        अगर Default Replace Text भरोगे तो scan के बाद New Text में वही auto-fill होगा।
+        खाली छोड़ने पर found text जैसा है वैसा ही रहेगा, फिर तुम table में manually edit कर सकते हो।
+      </p>
+
+      <div class="actions">
+        <button id="scanBtn" class="primary">Find / Scan Text</button>
+        <button id="replaceSelectedBtn" class="danger">Replace Selected</button>
+        <button id="replaceAllFoundBtn" class="warn">Replace All Found</button>
+        <button id="clearFoundBtn">Clear List</button>
+      </div>
+
+      <div id="scanInfo" class="mini">Scan result yahan dikhega.</div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Select</th>
+            <th>Found Old Text</th>
+            <th>Replace With New Text</th>
+            <th>Found Count</th>
+          </tr>
+        </thead>
+        <tbody id="foundTable">
+          <tr>
+            <td colspan="4">Abhi scan nahi hua.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Manual Replace Direct</h2>
+
+      <div class="grid3">
+        <div>
+          <label>Old Text</label>
+          <input id="oldText" placeholder="Example: W (Bowled)">
+        </div>
+
+        <div>
+          <label>New Text</label>
+          <input id="newText" placeholder="Example: W">
+        </div>
+
+        <div>
+          <label>Mode</label>
+          <select id="manualMode">
+            <option value="normal">Normal Text</option>
+            <option value="regex">Regex</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="mini">
+        Manual Replace सीधे old text को new text से replace करेगा। Regex mode में carefully use करना।
+      </p>
+
+      <div class="actions">
+        <button id="manualPreviewBtn">Manual Preview</button>
+        <button id="manualReplaceBtn" class="danger">Manual Replace</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Result Log</h2>
+      <div id="result" class="result">Result yahan dikhega...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    import {
+      getFirestore,
+      collection,
+      getDocs,
+      doc,
+      setDoc
+    } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+    // ✅ YAHAN APNA FIREBASE CONFIG PASTE KARO
+export const firebaseConfig = {
+  apiKey: "AIzaSyBgqY7cQmXBUlIGQPw50NEAd6lhcAjvs_I",
+  authDomain: "techsource-d11c4.firebaseapp.com",
+  databaseURL: "https://techsource-d11c4-default-rtdb.firebaseio.com",
+  projectId: "techsource-d11c4",
+  storageBucket: "techsource-d11c4.firebasestorage.app",
+  messagingSenderId: "756968347637",
+  appId: "1:756968347637:web:cc27b4ede42ca3c5f572bc"
+};
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const $ = (id) => document.getElementById(id);
+
+    let foundLabels = {};
+    let scannedDocsCache = [];
+
+    function resetLog(text = "") {
+      $("result").textContent = text;
+    }
+
+    function log(text) {
+      $("result").textContent += "\n" + text;
+      $("result").scrollTop = $("result").scrollHeight;
+    }
+
+    function setWorking(flag) {
+      [
+        "scanBtn",
+        "replaceSelectedBtn",
+        "replaceAllFoundBtn",
+        "manualPreviewBtn",
+        "manualReplaceBtn",
+        "clearFoundBtn"
+      ].forEach(id => $(id).disabled = flag);
+    }
+
+    function selectedCollections() {
+      const v = $("collectionName").value;
+
+      if (v === "both") {
+        return ["matches", "completedMatches"];
+      }
+
+      return [v];
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function escapeRegExp(str) {
+      return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    function cssEscape(str) {
+      if (window.CSS && CSS.escape) return CSS.escape(str);
+      return String(str).replace(/["\\]/g, "\\$&");
+    }
+
+    function scanValue(value, collectionName, docId, path = "") {
+      const findText = $("findText").value.trim();
+      const defaultReplaceText = $("defaultReplaceText").value;
+
+      if (typeof value === "string") {
+        const text = value.trim();
+
+        if (text.toLowerCase().includes(findText.toLowerCase())) {
+          if (!foundLabels[text]) {
+            foundLabels[text] = {
+              oldText: text,
+              newText: defaultReplaceText || text,
+              count: 0,
+              locations: []
+            };
+          }
+
+          foundLabels[text].count++;
+          foundLabels[text].locations.push({
+            collectionName,
+            docId,
+            path
+          });
+        }
+
+        return;
+      }
+
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => {
+          scanValue(item, collectionName, docId, `${path}[${index}]`);
+        });
+        return;
+      }
+
+      if (value && typeof value === "object") {
+        Object.keys(value).forEach((key) => {
+          scanValue(value[key], collectionName, docId, path ? `${path}.${key}` : key);
+        });
+      }
+    }
+
+    async function scanAnyText() {
+      if (!auth.currentUser) {
+        alert("Pehle login karo.");
+        return;
+      }
+
+      const findText = $("findText").value.trim();
+
+      if (!findText) {
+        alert("Find Text me kuchh likho.");
+        return;
+      }
+
+      try {
+        setWorking(true);
+        foundLabels = {};
+        scannedDocsCache = [];
+
+        resetLog("Scanning started...");
+        $("scanInfo").textContent = "Scanning...";
+
+        for (const colName of selectedCollections()) {
+          log(`\nCollection scanning: ${colName}`);
+
+          const snap = await getDocs(collection(db, colName));
+
+          log(`Docs found: ${snap.size}`);
+
+          snap.docs.forEach(item => {
+            const data = item.data();
+
+            scannedDocsCache.push({
+              collectionName: colName,
+              docId: item.id,
+              data
+            });
+
+            scanValue(data, colName, item.id);
+          });
+        }
+
+        renderFoundTable();
+
+        const totalTypes = Object.keys(foundLabels).length;
+        const totalCount = Object.values(foundLabels).reduce((sum, x) => sum + x.count, 0);
+
+        $("scanInfo").innerHTML =
+          `<span class="ok">Scan complete:</span> ${totalTypes} type found, total ${totalCount} matched text found.`;
+
+        log(`\nScan complete.`);
+        log(`Find Text: ${findText}`);
+        log(`Found types: ${totalTypes}`);
+        log(`Total matches: ${totalCount}`);
+
+      } catch (error) {
+        console.error(error);
+        log("\nERROR: " + error.message);
+        $("scanInfo").innerHTML = `<span class="bad">Scan failed:</span> ${error.message}`;
+      } finally {
+        setWorking(false);
+      }
+    }
+
+    function renderFoundTable() {
+      const rows = Object.values(foundLabels);
+
+      if (!rows.length) {
+        $("foundTable").innerHTML = `<tr><td colspan="4">Koi matching text nahi mila.</td></tr>`;
+        return;
+      }
+
+      $("foundTable").innerHTML = rows.map((item) => `
+        <tr>
+          <td>
+            <input type="checkbox" class="foundCheck" data-old="${escapeHtml(item.oldText)}" checked>
+          </td>
+
+          <td>
+            <b>${escapeHtml(item.oldText)}</b>
+            <div class="mini">
+              Example: ${escapeHtml(item.locations[0]?.collectionName || "")}/${escapeHtml(item.locations[0]?.docId || "")}
+              · ${escapeHtml(item.locations[0]?.path || "")}
+            </div>
+          </td>
+
+          <td>
+            <input type="text" class="newLabelInput" data-old="${escapeHtml(item.oldText)}" value="${escapeHtml(item.newText)}">
+          </td>
+
+          <td>${item.count}</td>
+        </tr>
+      `).join("");
+    }
+
+    function getReplaceMap(onlySelected) {
+      const map = {};
+
+      document.querySelectorAll(".newLabelInput").forEach(input => {
+        const oldText = input.dataset.old;
+        const newText = input.value;
+
+        if (onlySelected) {
+          const check = document.querySelector(`.foundCheck[data-old="${cssEscape(oldText)}"]`);
+          if (!check || !check.checked) return;
+        }
+
+        map[oldText] = newText;
+      });
+
+      return map;
+    }
+
+    function replaceExactFromMap(value, replaceMap, stats, path = "") {
+      if (typeof value === "string") {
+        const t = value.trim();
+
+        if (Object.prototype.hasOwnProperty.call(replaceMap, t)) {
+          stats.changedFields++;
+          stats.paths.push(path || "root");
+          return replaceMap[t];
+        }
+
+        return value;
+      }
+
+      if (Array.isArray(value)) {
+        return value.map((item, index) => {
+          return replaceExactFromMap(item, replaceMap, stats, `${path}[${index}]`);
+        });
+      }
+
+      if (value && typeof value === "object") {
+        const out = {};
+        Object.keys(value).forEach(key => {
+          out[key] = replaceExactFromMap(value[key], replaceMap, stats, path ? `${path}.${key}` : key);
+        });
+        return out;
+      }
+
+      return value;
+    }
+
+    async function replaceFoundLabels(onlySelected) {
+      if (!auth.currentUser) {
+        alert("Pehle login karo.");
+        return;
+      }
+
+      const replaceMap = getReplaceMap(onlySelected);
+
+      if (!Object.keys(replaceMap).length) {
+        alert("Replace ke liye koi text selected nahi hai.");
+        return;
+      }
+
+      const ok = confirm(
+        onlySelected
+          ? "Selected found text Firestore me permanently replace hoga. Sure?"
+          : "All found text Firestore me permanently replace hoga. Sure?"
+      );
+
+      if (!ok) return;
+
+      try {
+        setWorking(true);
+        resetLog("Replace started...");
+
+        let changedDocs = 0;
+        let changedFields = 0;
+
+        if (!scannedDocsCache.length) {
+          for (const colName of selectedCollections()) {
+            const snap = await getDocs(collection(db, colName));
+
+            snap.docs.forEach(item => {
+              scannedDocsCache.push({
+                collectionName: colName,
+                docId: item.id,
+                data: item.data()
+              });
+            });
+          }
+        }
+
+        for (const row of scannedDocsCache) {
+          const stats = {
+            changedFields: 0,
+            paths: []
+          };
+
+          const updated = replaceExactFromMap(row.data, replaceMap, stats);
+
+          if (stats.changedFields > 0) {
+            changedDocs++;
+            changedFields += stats.changedFields;
+
+            await setDoc(doc(db, row.collectionName, row.docId), updated, { merge: false });
+
+            log(`\nUpdated: ${row.collectionName}/${row.docId}`);
+            log(`Changed fields: ${stats.changedFields}`);
+            log(`Paths: ${stats.paths.slice(0, 8).join(", ")}${stats.paths.length > 8 ? " ..." : ""}`);
+          }
+        }
+
+        log("\nReplace complete.");
+        log(`Changed docs: ${changedDocs}`);
+        log(`Changed fields: ${changedFields}`);
+
+        $("scanInfo").innerHTML =
+          `<span class="ok">Replace complete:</span> ${changedDocs} docs updated, ${changedFields} fields changed.`;
+
+      } catch (error) {
+        console.error(error);
+        log("\nERROR: " + error.message);
+      } finally {
+        setWorking(false);
+      }
+    }
+
+    function makeManualReplaceFn(oldText, newText, mode) {
+      if (mode === "regex") {
+        const reg = new RegExp(oldText, "g");
+        return (value) => String(value).replace(reg, newText);
+      }
+
+      const reg = new RegExp(escapeRegExp(oldText), "g");
+      return (value) => String(value).replace(reg, newText);
+    }
+
+    function deepManualReplace(value, replaceFn, stats, path = "") {
+      if (typeof value === "string") {
+        const next = replaceFn(value);
+
+        if (next !== value) {
+          stats.changedFields++;
+          stats.paths.push(path || "root");
+        }
+
+        return next;
+      }
+
+      if (Array.isArray(value)) {
+        return value.map((item, index) => {
+          return deepManualReplace(item, replaceFn, stats, `${path}[${index}]`);
+        });
+      }
+
+      if (value && typeof value === "object") {
+        const out = {};
+
+        Object.keys(value).forEach(key => {
+          out[key] = deepManualReplace(value[key], replaceFn, stats, path ? `${path}.${key}` : key);
+        });
+
+        return out;
+      }
+
+      return value;
+    }
+
+    async function manualReplace(previewOnly) {
+      if (!auth.currentUser) {
+        alert("Pehle login karo.");
+        return;
+      }
+
+      const oldText = $("oldText").value;
+      const newText = $("newText").value;
+      const mode = $("manualMode").value;
+
+      if (!oldText) {
+        alert("Old Text empty nahi hona chahiye.");
+        return;
+      }
+
+      if (!previewOnly) {
+        const ok = confirm("Manual replace Firestore me permanent update karega. Sure?");
+        if (!ok) return;
+      }
+
+      try {
+        setWorking(true);
+        resetLog(previewOnly ? "Manual preview started..." : "Manual replace started...");
+
+        const replaceFn = makeManualReplaceFn(oldText, newText, mode);
+
+        let scanned = 0;
+        let changedDocs = 0;
+        let changedFields = 0;
+
+        for (const colName of selectedCollections()) {
+          log(`\nCollection: ${colName}`);
+
+          const snap = await getDocs(collection(db, colName));
+
+          for (const item of snap.docs) {
+            scanned++;
+
+            const stats = {
+              changedFields: 0,
+              paths: []
+            };
+
+            const updated = deepManualReplace(item.data(), replaceFn, stats);
+
+            if (stats.changedFields > 0) {
+              changedDocs++;
+              changedFields += stats.changedFields;
+
+              log(`\nFound: ${colName}/${item.id}`);
+              log(`Changed fields: ${stats.changedFields}`);
+              log(`Paths: ${stats.paths.slice(0, 8).join(", ")}${stats.paths.length > 8 ? " ..." : ""}`);
+
+              if (!previewOnly) {
+                await setDoc(doc(db, colName, item.id), updated, { merge: false });
+                log(`Updated: ${colName}/${item.id}`);
+              }
+            }
+          }
+        }
+
+        log(previewOnly ? "\nManual preview complete. Firestore update nahi hua." : "\nManual replace complete. Firestore update ho gaya.");
+        log(`Scanned docs: ${scanned}`);
+        log(`Changed docs: ${changedDocs}`);
+        log(`Changed fields: ${changedFields}`);
+
+      } catch (error) {
+        console.error(error);
+        log("\nERROR: " + error.message);
+      } finally {
+        setWorking(false);
+      }
+    }
+
+    function clearFoundList() {
+      foundLabels = {};
+      scannedDocsCache = [];
+      $("foundTable").innerHTML = `<tr><td colspan="4">List clear ho gaya.</td></tr>`;
+      $("scanInfo").textContent = "Scan result yahan dikhega.";
+      resetLog("List cleared.");
+    }
+
+    $("loginBtn").onclick = async () => {
+      try {
+        resetLog("Login...");
+        await signInWithEmailAndPassword(auth, $("email").value.trim(), $("password").value);
+        log("Login success.");
+      } catch (error) {
+        log("Login failed: " + error.message);
+      }
+    };
+
+    $("logoutBtn").onclick = async () => {
+      await signOut(auth);
+    };
+
+    $("scanBtn").onclick = scanAnyText;
+    $("replaceSelectedBtn").onclick = () => replaceFoundLabels(true);
+    $("replaceAllFoundBtn").onclick = () => replaceFoundLabels(false);
+    $("manualPreviewBtn").onclick = () => manualReplace(true);
+    $("manualReplaceBtn").onclick = () => manualReplace(false);
+    $("clearFoundBtn").onclick = clearFoundList;
+
+    onAuthStateChanged(auth, (user) => {
+      $("authStatus").innerHTML = user
+        ? `<span class="ok">Logged in:</span> ${escapeHtml(user.email)}`
+        : `<span class="bad">Not logged in</span>`;
+    });
+  </script>
+</body>
+</html>
