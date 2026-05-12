@@ -26,17 +26,17 @@ window.app = {
 
   async bootstrap() {
     if (!MATCH_ID) {
-      this.noMatch("Loading...");
+      this.noMatch("Latest live match खोज रहा है...");
       try {
         const latest = await getLatestPublicMatch();
-        if (!latest?.matchId) return this.noMatch("Match Data Not Found.");
+        if (!latest?.matchId) return this.noMatch("अभी कोई live या completed match नहीं मिला.");
         MATCH_ID = latest.matchId;
         USER_MATCH_BACKUP_KEY = `cricket_user_match_backup_${MATCH_ID}`;
         this.store = latest;
         history.replaceState(null, "", `user.html?match=${encodeURIComponent(MATCH_ID)}`);
       } catch (error) {
         console.error(error);
-        return this.noMatch("Match Not Found" + error.message);
+        return this.noMatch("Latest match load नहीं हुआ: " + error.message);
       }
     }
     this.connect();
@@ -63,8 +63,9 @@ window.app = {
 
   render() {
     const m = normalizeState(this.state);
-    const first = m.inningNumber === 1 ? m.battingTeam : (m.teamA || m.bowlingTeam);
-    const second = m.inningNumber === 1 ? m.bowlingTeam : m.battingTeam;
+    const order = this.inningsOrder(m);
+    const first = order.first;
+    const second = order.second;
     $("matchTitle").textContent = m.matchTitle || "Live Match";
     $("teamA").textContent = this.teamShort(first);
     $("teamB").textContent = this.teamShort(second);
@@ -72,8 +73,17 @@ window.app = {
     $("logoB").innerHTML = this.logo(second);
     const firstScore = this.inningsScore(m, first?.name);
     const secondScore = this.inningsScore(m, second?.name);
-    $("scoreA").innerHTML = m.inningNumber === 1 && !m.matchFinished ? `${m.runs}/${m.wkts}<small>(${overText(m.balls)})</small>` : `${this.safe(firstScore || m.firstInnings || "-")}<small>1st innings</small>`;
-    $("scoreB").innerHTML = m.inningNumber === 2 || m.matchFinished ? `${this.safe(secondScore || m.secondInnings || `${m.runs}/${m.wkts} (${overText(m.balls)})`)}<small>2nd innings</small>` : "Yet to bat";
+    const firstLive = m.inningNumber === 1 && !m.matchFinished;
+    const secondLive = m.inningNumber === 2 && !m.matchFinished;
+    const firstText = firstLive ? `${m.runs}/${m.wkts}` : this.safe(firstScore || m.firstInnings || "-");
+    const firstMeta = firstLive ? `(${overText(m.balls)}) · Batting` : "1st innings";
+    const secondText = secondLive ? `${m.runs}/${m.wkts}` : this.safe(secondScore || m.secondInnings || "Yet to bat");
+    const secondMeta = secondLive ? `(${overText(m.balls)}) · Batting` : (m.matchFinished || secondScore || m.secondInnings ? "2nd innings" : "");
+    $("scoreA").innerHTML = `<span class="score-main">${firstText}</span>${firstMeta ? `<small>${firstMeta}</small>` : ""}`;
+    $("scoreB").innerHTML = `<span class="score-main">${secondText}</span>${secondMeta ? `<small>${secondMeta}</small>` : ""}`;
+    const teamCards = document.querySelectorAll(".match-card .team");
+    teamCards[0]?.classList.toggle("batting-now", firstLive);
+    teamCards[1]?.classList.toggle("batting-now", secondLive);
     const mode = m.matchFinished ? "result" : (m.scoringLocked ? "locked" : (m.liveControl?.mode === "delay" ? "delay" : (m.liveControl?.mode === "paused" ? "break" : "live")));
     $("centerStatus").className = `center ${mode}`;
     $("centerStatus").textContent = m.matchFinished ? "Result" : (m.scoringLocked ? "Locked" : (m.liveControl?.mode === "paused" ? "Break" : (m.liveControl?.mode === "delay" ? "Delay" : "Live")));
@@ -85,7 +95,8 @@ window.app = {
     const striker = m.striker === 1 ? m.bat1 : m.bat2;
     const non = m.striker === 1 ? m.bat2 : m.bat1;
     $("battingInfo").innerHTML = `<b>${this.safe(striker.name)}</b> ${striker.r}/${striker.b} 🏏<br>${this.safe(non.name)} ${non.r}/${non.b}`;
-    $("bowlingInfo").innerHTML = `<b>${this.safe(m.bowler.name)}</b> ${overText(m.bowler.balls)}-${m.bowler.r}-${m.bowler.w}<br>Last: ${this.safe(m.lastOverBowler || "-")}`;
+    const liveBowler = m.bowlerStats?.[m.bowler.name] ? { ...m.bowler, ...m.bowlerStats[m.bowler.name], r: m.bowlerStats[m.bowler.name].runs ?? m.bowler.r, w: m.bowlerStats[m.bowler.name].wkts ?? m.bowler.w } : m.bowler;
+    $("bowlingInfo").innerHTML = `<b>${this.safe(liveBowler.name)}</b> ${overText(liveBowler.balls)}-${liveBowler.r ?? liveBowler.runs}-${liveBowler.w ?? liveBowler.wkts}<br>Last: ${this.safe(m.lastOverBowler || "-")}`;
     this.renderOvers(m);
     $("overviewScore").textContent = `${m.runs}/${m.wkts} (${overText(m.balls)})`;
     $("overviewToss").textContent = m.tossText || "-"; $("overviewCRR").textContent = crr; $("overviewExtras").textContent = m.extras; $("overviewLastWicket").textContent = m.lastWicket || "-";
@@ -113,8 +124,31 @@ window.app = {
   },
 
   currentBattingRows(m) { const rows = [...(m.battingScorecard || [])]; [m.bat1, m.bat2].forEach(b => { if (b?.name && b.name !== "-" && !rows.some(x => x.name === b.name)) rows.push(b); }); return rows; },
-  renderCommentary(m) { $("commentaryList").innerHTML = (m.commentary || []).length ? m.commentary.map(c => `<div class="comment"><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div>`).join("") : "<span class='muted'>No commentary</span>"; },
-  renderStats(m) { const rows = this.allBatters(m); const fours = rows.reduce((a,b)=>a+Number(b.f||0),0), sixes=rows.reduce((a,b)=>a+Number(b.s||0),0); const top=[...rows].sort((a,b)=>Number(b.r||0)-Number(a.r||0))[0]; const bowl={}; Object.values(m.inningsDetails||{}).forEach(i=>Object.entries(i.bowlerStats||{}).forEach(([n,s])=>{bowl[n]=bowl[n]||{runs:0,balls:0,wkts:0}; bowl[n].runs+=Number(s.runs||0); bowl[n].balls+=Number(s.balls||0); bowl[n].wkts+=Number(s.wkts||0);})); if(!Object.keys(bowl).length) Object.assign(bowl,m.bowlerStats||{}); const best=Object.entries(bowl).sort((a,b)=>Number(b[1].wkts||0)-Number(a[1].wkts||0))[0]; $("statRuns").textContent=m.runs;$("statWkts").textContent=m.wkts;$("statOvers").textContent=overText(m.balls);$("statProjected").textContent=m.balls?Math.round(m.runs/(m.balls/(m.totalOvers*6))):0;$("statFours").textContent=fours;$("statSixes").textContent=sixes;$("statTopBatter").textContent=top?`${top.name} ${top.r}`:"-";$("statBestBowler").textContent=best?`${best[0]} ${best[1].wkts}/${best[1].runs}`:"-";$("fowList").innerHTML=(m.fallOfWickets||[]).length?m.fallOfWickets.map((x,i)=>`<div class="comment">${i+1}. ${this.safe(x)}</div>`).join(""):"<span class='muted'>No wickets</span>"; },
+  renderCommentary(m) {
+    let rows = [...(m.commentary || [])];
+    if (m.matchFinished || rows.length === 0) {
+      rows = [];
+      Object.values(m.inningsDetails || {}).forEach(inn => rows.push(...(inn.commentary || [])));
+    }
+    $("commentaryList").innerHTML = rows.length ? rows.map(c => `<div class="comment"><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div>`).join("") : "<span class='muted'>No commentary</span>";
+  },
+  renderStats(m) {
+    const rows = this.allBatters(m);
+    const fours = rows.reduce((a,b)=>a+Number(b.f||0),0), sixes=rows.reduce((a,b)=>a+Number(b.s||0),0);
+    const top=[...rows].sort((a,b)=>Number(b.r||0)-Number(a.r||0))[0];
+    const bowl={};
+    Object.values(m.inningsDetails||{}).forEach(i=>Object.entries(i.bowlerStats||{}).forEach(([n,s])=>{bowl[n]=bowl[n]||{runs:0,balls:0,wkts:0}; bowl[n].runs+=Number(s.runs||0); bowl[n].balls+=Number(s.balls||0); bowl[n].wkts+=Number(s.wkts||0);}));
+    if(!Object.keys(bowl).length) Object.assign(bowl,m.bowlerStats||{});
+    const best=Object.entries(bowl).sort((a,b)=>Number(b[1].wkts||0)-Number(a[1].wkts||0))[0];
+    const innings = Object.values(m.inningsDetails || {});
+    const showFull = m.matchFinished && innings.length;
+    const totalRuns = showFull ? innings.reduce((a,i)=>a+Number(i.runs||0),0) : m.runs;
+    const totalWkts = showFull ? innings.reduce((a,i)=>a+Number(i.wkts||0),0) : m.wkts;
+    const totalBalls = showFull ? innings.reduce((a,i)=>a+Number(i.balls||0),0) : m.balls;
+    const fow = showFull ? innings.flatMap(i=>i.fallOfWickets||[]) : (m.fallOfWickets||[]);
+    const projected = showFull ? "-" : (m.balls ? Math.round(m.runs/(m.balls/(m.totalOvers*6))) : 0);
+    $("statRuns").textContent=totalRuns;$("statWkts").textContent=totalWkts;$("statOvers").textContent=overText(totalBalls);$("statProjected").textContent=projected;$("statFours").textContent=fours;$("statSixes").textContent=sixes;$("statTopBatter").textContent=top?`${top.name} ${top.r}`:"-";$("statBestBowler").textContent=best?`${best[0]} ${best[1].wkts}/${best[1].runs}`:"-";$("fowList").innerHTML=fow.length?fow.map((x,i)=>`<div class="comment">${i+1}. ${this.safe(x)}</div>`).join(""):"<span class='muted'>No wickets</span>";
+  },
   allBatters(m) { const out=[]; Object.values(m.inningsDetails||{}).forEach(i=>out.push(...(i.battingScorecard||[]))); if(!out.length) out.push(...this.currentBattingRows(m)); return out; },
   renderPlayers(m) { const blocks=[]; Object.entries(m.teams||{}).forEach(([team,players]) => (players||[]).forEach(p => { const meta=m.teamInfo?.[team]?.players?.[p]||{}; blocks.push(`<div class="player" onclick="app.playerModal('${encodeURIComponent(team)}','${encodeURIComponent(p)}')"><div class="avatar">${meta.image?`<img src="${this.safe(meta.image)}">`:this.short(p).slice(0,2)}</div><b>${this.safe(p)}</b><br><small>${this.safe(team)}</small></div>`); })); $("playersList").innerHTML = blocks.join("") || "<span class='muted'>No players</span>"; },
   renderMatches() { const current = this.state?.matchId ? `<div class="match-card-mini"><b>${this.safe(this.state.matchTitle)}</b><br><small>Current · ${this.state.runs}/${this.state.wkts} (${overText(this.state.balls)})</small></div>` : ""; const history = this.completed.map(m => `<div class="match-card-mini" onclick="location.href='user.html?match=${m.matchId}'"><b>${this.safe(m.matchTitle||m.title||'Match')}</b><br><small>${this.safe(m.winnerText||'')}<br>${this.safe(m.firstInnings||'')} ${m.secondInnings?' | '+this.safe(m.secondInnings):''}</small></div>`).join(""); $("matchesList").innerHTML = current + history || "<span class='muted'>No matches</span>"; },
@@ -122,84 +156,160 @@ window.app = {
   playerModal(teamEnc, playerEnc) {
     const team = decodeURIComponent(teamEnc);
     const player = decodeURIComponent(playerEnc);
-    const stats = this.playerStats(player);
+    const stats = this.playerStats(player, team);
+    const batSR = calcSR(stats.runs, stats.balls);
+    const bowlEco = calcER(stats.bowlingRuns, stats.bowlingBalls);
     $("modalBody").innerHTML = `
       <h2>${this.safe(player)}</h2>
-      <p>${this.safe(team)}</p>
+      <p>${this.safe(team)} · Matches: <b>${stats.matches}</b></p>
+
+      <h3 style="margin:16px 0 8px">Batting</h3>
       <div class="quick-grid">
-        <div><span>Matches</span><b>${stats.matches}</b></div>
+        <div><span>Innings</span><b>${stats.innings}</b></div>
         <div><span>Runs</span><b>${stats.runs}</b></div>
-        <div><span>Balls</span><b>${stats.balls}</b></div>
-        <div><span>Dots</span><b>${stats.dots}</b></div>
+        <div><span>Balls Faced</span><b>${stats.balls}</b></div>
+        <div><span>Batting Dots</span><b>${stats.dots}</b></div>
         <div><span>4s</span><b>${stats.fours}</b></div>
         <div><span>6s</span><b>${stats.sixes}</b></div>
+        <div><span>SR</span><b>${batSR}</b></div>
+      </div>
+
+      <h3 style="margin:18px 0 8px">Bowling</h3>
+      <div class="quick-grid">
+        <div><span>Overs</span><b>${overText(stats.bowlingBalls)}</b></div>
+        <div><span>Balls Bowled</span><b>${stats.bowlingBalls}</b></div>
+        <div><span>Runs Given</span><b>${stats.bowlingRuns}</b></div>
+        <div><span>Bowling Dots</span><b>${stats.bowlingDots}</b></div>
         <div><span>Wickets</span><b>${stats.wkts}</b></div>
+        <div><span>Economy</span><b>${bowlEco}</b></div>
+        <div><span>Wides</span><b>${stats.wides}</b></div>
+        <div><span>No Balls</span><b>${stats.noBalls}</b></div>
       </div>
     `;
     $("modal").classList.add("show");
   },
   closeModal() { $("modal").classList.remove("show"); },
-  playerStats(player) {
-    const s = { runs: 0, balls: 0, dots: 0, fours: 0, sixes: 0, wkts: 0, matches: 0, innings: 0 };
-    const counted = new Set();
+  playerStats(player, teamName = "") {
+    const meta = teamName ? (this.state.teamInfo?.[teamName]?.players?.[player] || {}) : {};
+    const targetPlayerId = meta.playerId || "";
+    const s = { runs: 0, balls: 0, dots: 0, fours: 0, sixes: 0, wkts: 0, bowlingBalls: 0, bowlingRuns: 0, bowlingDots: 0, wides: 0, noBalls: 0, matches: 0, innings: 0 };
+    const countedMatches = new Set();
+    const processedMatches = new Set();
+
+    const sameBatter = (bat, innTeam = "") => {
+      if (!bat || bat.name !== player) return false;
+      if (targetPlayerId && bat.playerId && bat.playerId !== targetPlayerId) return false;
+      if (!targetPlayerId && teamName && innTeam && innTeam !== teamName) return false;
+      return true;
+    };
+
+    const sameBowler = (name, stat = {}, bowlingTeam = "") => {
+      if (!name || name !== player) return false;
+      if (targetPlayerId && stat.playerId && stat.playerId !== targetPlayerId) return false;
+      if (!targetPlayerId && teamName && bowlingTeam && bowlingTeam !== teamName) return false;
+      return true;
+    };
+
     const addMatch = (matchId) => {
-      if (matchId && !counted.has(matchId)) {
-        counted.add(matchId);
-        s.matches += 1;
-      }
+      if (!matchId || countedMatches.has(matchId)) return;
+      countedMatches.add(matchId);
+      s.matches += 1;
     };
-    const addBatter = (bat) => {
-      if (!bat || bat.name !== player) return;
+
+    const addBatter = (bat, innTeam = "") => {
+      if (!sameBatter(bat, innTeam)) return false;
       s.innings += 1;
-      s.runs += Number(bat.r || 0);
-      s.balls += Number(bat.b || 0);
+      s.runs += Number(bat.r || bat.runs || 0);
+      s.balls += Number(bat.b || bat.balls || 0);
       s.dots += Number(bat.dots || bat.d || 0);
-      s.fours += Number(bat.f || 0);
-      s.sixes += Number(bat.s || 0);
+      s.fours += Number(bat.f || bat.fours || 0);
+      s.sixes += Number(bat.s || bat.sixes || 0);
+      return true;
     };
-    const addBowler = (name, stat) => {
-      if (!name || name !== player || !stat) return;
+
+    const addBowler = (name, stat, bowlingTeam = "") => {
+      if (!sameBowler(name, stat, bowlingTeam)) return false;
       s.wkts += Number(stat.wkts || stat.w || 0);
+      s.bowlingBalls += Number(stat.balls || stat.b || 0);
+      s.bowlingRuns += Number(stat.runs ?? stat.r ?? 0);
+      s.bowlingDots += Number(stat.dots || stat.d || 0);
+      s.wides += Number(stat.wides || stat.wd || 0);
+      s.noBalls += Number(stat.noBalls || stat.nb || 0);
+      return true;
     };
+
     const collectMatch = (match) => {
-      const matchId = match.matchId || match.id || `live-${Math.random()}`;
+      if (!match) return;
+      const matchId = match.matchId || match.id || match.title || match.matchTitle || "current";
+      if (processedMatches.has(matchId)) return;
+      processedMatches.add(matchId);
+
       let seen = false;
+      const innings = Object.values(match.inningsDetails || {});
+      const matchTeams = [match.teamA?.name, match.teamB?.name].filter(Boolean);
+      const oppositeTeam = (batTeam) => matchTeams.find(n => n && n !== batTeam) || "";
+      const scorecard = match.fullScorecardData || match.scorecard || {};
+      const scorecardInnings = Object.values(scorecard.inningsDetails || {});
+      const hasSavedInnings = innings.length || scorecardInnings.length;
+      const inningSeen = new Set();
+
       const addInnings = (inn) => {
         if (!inn) return;
-        (inn.battingScorecard || []).forEach(bat => {
-          if (bat?.name === player) {
-            addBatter(bat);
-            seen = true;
-          }
-        });
-        if (inn.bowlerStats) {
-          Object.entries(inn.bowlerStats).forEach(([name, stat]) => {
-            if (name === player) {
-              addBowler(name, stat);
-              seen = true;
-            }
-          });
-        }
+        const battingRows = Array.isArray(inn.battingScorecard) ? inn.battingScorecard : [];
+        const innTeam = inn.team || inn.battingTeam?.name || inn.battingTeam || "";
+        const bowlingTeam = inn.bowlingTeam?.name || inn.bowlingTeam || inn.fieldingTeam?.name || inn.fieldingTeam || oppositeTeam(innTeam);
+        const key = `${innTeam}|${inn.runs ?? ""}|${inn.wkts ?? ""}|${inn.balls ?? ""}|${battingRows.map(b => (b.playerId || b.name) + ":" + (b.r || b.runs || 0) + ":" + (b.b || b.balls || 0)).join(",")}`;
+        if (inningSeen.has(key)) return;
+        inningSeen.add(key);
+        battingRows.forEach(bat => { if (addBatter(bat, innTeam)) seen = true; });
+        Object.entries(inn.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(name, stat, bowlingTeam)) seen = true; });
       };
-      const scorecard = match.fullScorecardData || match.scorecard || {};
-      Object.values(match.inningsDetails || {}).forEach(addInnings);
-      Object.values(scorecard.inningsDetails || {}).forEach(addInnings);
-      const completed = scorecard.completedInnings || match.completedInnings || {};
-      if (Array.isArray(completed)) completed.forEach(addInnings);
-      else Object.values(completed || {}).forEach(addInnings);
-      if (scorecard.battingScorecard) addInnings({ battingScorecard: scorecard.battingScorecard });
-      if (match.battingScorecard) addInnings({ battingScorecard: match.battingScorecard });
-      if (scorecard.bowlerStats) Object.entries(scorecard.bowlerStats).forEach(addBowler);
-      if (match.bowlerStats) Object.entries(match.bowlerStats).forEach(addBowler);
-      if (match.bowler?.name === player) {
-        addBowler(match.bowler.name, match.bowler);
-        seen = true;
+
+      innings.forEach(addInnings);
+      scorecardInnings.forEach(addInnings);
+
+      const isLiveCurrent = match.matchFinished !== true && match.status !== "completed";
+      if (isLiveCurrent) {
+        addInnings({
+          team: match.battingTeam?.name || "",
+          runs: match.runs,
+          wkts: match.wkts,
+          balls: match.balls,
+          battingScorecard: this.currentBattingRows(match),
+          bowlingTeam: match.bowlingTeam?.name || match.bowlingTeam || oppositeTeam(match.battingTeam?.name || ""),
+          bowlerStats: match.bowlerStats || {}
+        });
       }
+
+      // Only use flat/legacy scorecard when saved inningsDetails are not available.
+      // This prevents completed matches from being counted twice.
+      if (!hasSavedInnings && !isLiveCurrent) {
+        if (Array.isArray(scorecard.completedInnings)) scorecard.completedInnings.forEach(addInnings);
+        else Object.values(scorecard.completedInnings || match.completedInnings || {}).forEach(rows => addInnings({ battingScorecard: rows }));
+        if (scorecard.battingScorecard) addInnings({ team: match.battingTeam?.name || "", battingScorecard: scorecard.battingScorecard });
+        if (match.battingScorecard) addInnings({ team: match.battingTeam?.name || "", battingScorecard: match.battingScorecard });
+        const legacyBowlingTeam = match.bowlingTeam?.name || match.bowlingTeam || "";
+        Object.entries(scorecard.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(name, stat, legacyBowlingTeam)) seen = true; });
+        Object.entries(match.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(name, stat, legacyBowlingTeam)) seen = true; });
+        if (match.bowler?.name === player && addBowler(match.bowler.name, match.bowler, legacyBowlingTeam)) seen = true;
+      }
+
       if (seen) addMatch(matchId);
     };
+
     collectMatch(this.state);
     (this.completed || []).forEach(collectMatch);
     return s;
+  },
+  teamByName(m, name) {
+    if (!name) return null;
+    return [m.teamA, m.teamB, m.battingTeam, m.bowlingTeam, m.firstBattingTeam, m.secondBattingTeam].find(t => t?.name === name) || { name };
+  },
+  inningsOrder(m) {
+    const keys = Object.keys(m.inningsDetails || {});
+    const firstName = m.firstBattingTeam?.name || (m.inningNumber === 1 ? m.battingTeam?.name : keys[0]) || m.teamA?.name || m.battingTeam?.name;
+    const secondName = m.secondBattingTeam?.name || (m.inningNumber === 1 ? m.bowlingTeam?.name : m.battingTeam?.name) || keys.find(k => k !== firstName) || (m.teamA?.name === firstName ? m.teamB?.name : m.teamA?.name);
+    return { first: this.teamByName(m, firstName), second: this.teamByName(m, secondName) };
   },
   inningsScore(m, team) { const d = m.inningsDetails?.[team]; return d ? `${d.runs}/${d.wkts} (${d.overs || overText(d.balls)})` : ""; },
   logo(team){ return team?.logo ? `<img src="${this.safe(team.logo)}">` : this.safe(team?.shortName || this.short(team?.name)); },

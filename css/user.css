@@ -78,3 +78,59 @@ body{margin:0;background:#f6f7f9;color:#202124;font-family:Inter,Segoe UI,Roboto
  .quick-grid{grid-template-columns:1fr 1fr}
  .players-grid{grid-template-columns:repeat(2,1fr)}
  table{display:block;overflow-x:auto;white-space:nowrap;font-size:11px}}
+/* Final mobile score-card stability fix: old style retained, no percentage scale */
+.match-card,.team,.team.right,.team h2,.score,.series span{min-width:0}
+.series span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.score{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:520px){
+  .score-header{padding:14px 10px 12px;overflow:hidden}
+  .viewer{top:6px;left:8px;font-size:10px;padding:4px 7px}
+  .series{gap:8px;font-size:14px;margin-bottom:16px;padding-left:42px}
+  .series button{flex:0 0 auto;padding:7px 11px;font-size:12px}
+  .match-card{grid-template-columns:minmax(0,1fr) 42px minmax(0,1fr);gap:4px;align-items:center}
+  .team{grid-template-columns:24px minmax(0,1fr);grid-template-areas:"logo score" "name name";gap:4px 5px;align-items:center}
+  .team.right{grid-template-columns:minmax(0,1fr) 24px;grid-template-areas:"score logo" "name name";gap:4px 5px;align-items:center}
+  .logo{width:24px;height:24px;font-size:10px}
+  .team h2{font-size:15px;line-height:1.1;margin:5px 0 0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .score{font-size:17px;line-height:1.08;white-space:nowrap;letter-spacing:-.4px}
+  .score small{font-size:11px;line-height:1.1;white-space:nowrap}
+  .center{min-width:0;font-size:9px;line-height:1.05;padding:5px 2px;text-align:center;white-space:normal;word-break:break-word}
+  .live-info{font-size:14px;margin:16px 0 12px;word-break:break-word}
+  .details{font-size:12px;line-height:1.25;gap:6px;overflow:hidden}
+  .details div{min-width:0;overflow-wrap:anywhere}
+  .over-strip{padding:7px 10px}
+}
+@media(max-width:380px){
+  .match-card{grid-template-columns:minmax(0,1fr) 36px minmax(0,1fr);gap:3px}
+  .team{grid-template-columns:20px minmax(0,1fr)}
+  .team.right{grid-template-columns:minmax(0,1fr) 20px}
+  .logo{width:20px;height:20px}
+  .team h2{font-size:13px}
+  .score{font-size:15px;letter-spacing:-.6px}
+  .score small{font-size:10px}
+  .center{font-size:8px;padding:4px 1px}
+}
+
+/* Mobile table/card fix: keep tables full-card width, no half-broken header */
+.card{overflow:hidden}
+.card table{width:100%;min-width:100%;max-width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;display:table;overflow:hidden}
+.card th,.card td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card th:first-child,.card td:first-child{width:42%;max-width:42%}
+.card th:not(:first-child),.card td:not(:first-child){width:auto}
+
+@media(max-width:520px){
+  .content{padding:8px}
+  .card{padding:10px;overflow:hidden}
+  .card h3{font-size:18px;margin-bottom:10px}
+  .card table{display:table!important;width:100%!important;min-width:100%!important;max-width:100%!important;table-layout:fixed!important;font-size:10px!important;white-space:normal!important;margin-bottom:10px}
+  .card thead,.card tbody,.card tr{width:100%}
+  .card th,.card td{padding:7px 4px;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+  .card th:first-child,.card td:first-child{width:44%;text-align:left}
+  .card th:nth-child(n+2),.card td:nth-child(n+2){text-align:center}
+  .card td[colspan]{width:100%!important;max-width:100%!important;text-align:left;white-space:normal;overflow:visible;text-overflow:clip}
+}
+
+@media(max-width:380px){
+  .card th,.card td{padding:6px 3px;font-size:9px}
+  .card th:first-child,.card td:first-child{width:40%}
+}

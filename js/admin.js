@@ -117,7 +117,7 @@ window.app = {
     $("loginPassword").addEventListener("keydown", e => { if (e.key === "Enter") this.login(); });
     $("logoutBtn").onclick = () => logoutAdmin();
     document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => this.openPage(btn.dataset.page));
-    ["teamASelect", "teamBSelect", "tossDecision", "tossWinner"].forEach(id => $(id).addEventListener("change", () => this.refreshSetupPlayers()));
+    ["teamASelect", "teamBSelect", "tossDecision", "tossWinner", "openingStriker"].forEach(id => $(id).addEventListener("change", () => this.refreshSetupPlayers()));
     $("startMatchBtn").onclick = () => this.startMatch();
     $("copyLinkBtn").onclick = () => this.copyPublicLink();
     $("openUserBtn").onclick = () => window.open(this.publicLink(), "_blank");
@@ -274,18 +274,43 @@ window.app = {
   async refreshSetupPlayers() {
     const teamA = this.teamById($("teamASelect").value);
     const teamB = this.teamById($("teamBSelect").value);
-    const tossWinnerId = $("tossWinner").value || $("teamASelect").value;
+
+    // Toss winner must be only Team A or Team B. Earlier it allowed any saved team,
+    // which could accidentally create a match with a third team batting/bowling.
+    const tossSelect = $("tossWinner");
+    const selectedTeams = [teamA, teamB].filter(Boolean);
+    const previousToss = tossSelect.value;
+    tossSelect.innerHTML = selectedTeams.map(t => `<option value="${t.teamId}">${this.safe(t.name)}</option>`).join("");
+    if (selectedTeams.some(t => t.teamId === previousToss)) tossSelect.value = previousToss;
+    else if (teamA) tossSelect.value = teamA.teamId;
+
+    const tossWinnerId = tossSelect.value || teamA?.teamId || "";
     const tossTeam = this.teamById(tossWinnerId);
-    const otherTeam = tossWinnerId === teamA?.teamId ? teamB : teamA;
+    const otherTeam = tossTeam?.teamId === teamA?.teamId ? teamB : teamA;
     const batting = $("tossDecision").value === "bat" ? tossTeam : otherTeam;
     const bowling = $("tossDecision").value === "bat" ? otherTeam : tossTeam;
     const batPlayers = batting?.players || [];
     const bowlPlayers = bowling?.players || [];
-    const fill = (id, list) => $(id).innerHTML = list.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
+
+    const fill = (id, list, keepValue = "") => {
+      const el = $(id);
+      const oldVal = keepValue || el.value;
+      el.innerHTML = list.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
+      if (list.some(p => p.playerId === oldVal)) el.value = oldVal;
+    };
+
     fill("openingStriker", batPlayers);
-    fill("openingNonStriker", batPlayers.filter(p => p.playerId !== $("openingStriker").value));
+    const strikerId = $("openingStriker").value;
+    const nonStrikers = batPlayers.filter(p => p.playerId !== strikerId);
+    fill("openingNonStriker", nonStrikers);
     fill("openingBowler", bowlPlayers);
-    $("setupPreview").innerHTML = `<b>${this.safe(teamA?.name || "Team A")} vs ${this.safe(teamB?.name || "Team B")}</b><br>Batting first: ${this.safe(batting?.name || "-")}<br>Bowling first: ${this.safe(bowling?.name || "-")}`;
+
+    const warning = (!teamA || !teamB || teamA.teamId === teamB.teamId)
+      ? "<br><span style='color:#dc2626'>Please select two different teams.</span>"
+      : (!batPlayers.length || batPlayers.length < 2 || !bowlPlayers.length)
+        ? "<br><span style='color:#dc2626'>Selected teams need at least 2 batting players and 1 bowler/player.</span>"
+        : "";
+    $("setupPreview").innerHTML = `<b>${this.safe(teamA?.name || "Team A")} vs ${this.safe(teamB?.name || "Team B")}</b><br>Batting first: ${this.safe(batting?.name || "-")}<br>Bowling first: ${this.safe(bowling?.name || "-")}${warning}`;
   },
 
   teamById(id) { return this.teams.find(t => t.teamId === id) || null; },
@@ -303,9 +328,12 @@ window.app = {
     const teamB = this.teamById($("teamBSelect").value);
     if (!teamA || !teamB || teamA.teamId === teamB.teamId) return this.toast("दो अलग-अलग teams select करें", true);
     const tossTeam = this.teamById($("tossWinner").value) || teamA;
+    if (![teamA.teamId, teamB.teamId].includes(tossTeam.teamId)) return this.toast("Toss winner sirf Team A ya Team B ho sakta hai", true);
     const otherTeam = tossTeam.teamId === teamA.teamId ? teamB : teamA;
     const batting = $("tossDecision").value === "bat" ? tossTeam : otherTeam;
     const bowling = $("tossDecision").value === "bat" ? otherTeam : tossTeam;
+    const totalOvers = Number($("totalOvers").value || 0);
+    if (!Number.isFinite(totalOvers) || totalOvers <= 0) return this.toast("Total overs 1 ya usse zyada hona चाहिए", true);
     const striker = this.playerById(batting, $("openingStriker").value);
     const nonStriker = this.playerById(batting, $("openingNonStriker").value);
     const bowler = this.playerById(bowling, $("openingBowler").value);
@@ -331,10 +359,12 @@ window.app = {
       teamB: this.teamObj(teamB),
       battingTeam: this.teamObj(batting),
       bowlingTeam: this.teamObj(bowling),
+      firstBattingTeam: this.teamObj(batting),
+      secondBattingTeam: this.teamObj(bowling),
       tossWinner: tossTeam.name,
       tossDecision: $("tossDecision").value,
       tossText: `${tossTeam.name} chose ${$("tossDecision").value === "bat" ? "bat" : "bowl"}`,
-      totalOvers: Number($("totalOvers").value || 20),
+      totalOvers,
       bat1: normalizeBatter({ playerId: striker.playerId, name: striker.name, position: 1 }),
       bat2: normalizeBatter({ playerId: nonStriker.playerId, name: nonStriker.name, position: 2 }),
       bowler: { playerId: bowler.playerId, name: bowler.name, balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 },
@@ -364,13 +394,22 @@ window.app = {
     if (s.scoringLocked) return this.toast("Scoring locked है", true);
     if (run === "custom") { const v = prompt("Runs"); if (v === null || isNaN(v)) return; run = Number(v); }
     const isWide = $("wide").checked, isNo = $("noball").checked, isBye = $("bye").checked, isLb = $("legbye").checked, isWicket = $("wicket").checked;
+    if (isWide && isNo) return this.toast("Wide aur No Ball ek साथ select नहीं हो सकते.", true);
+    if (isBye && isLb) return this.toast("Bye aur Leg Bye ek साथ select नहीं हो सकते.", true);
+    if (isWide && (isBye || isLb)) return this.toast("Wide ke साथ Bye/Leg Bye select न करें. Wide runs को run button से add करें.", true);
     if (isWicket && !this.pendingWicket) return this.openWicketModal();
+    if (isNo && isWicket && !["Run Out", "Retired Out"].includes(this.pendingWicket?.type)) {
+      $("wicket").checked = false;
+      this.pendingWicket = null;
+      return this.toast("No-ball par Bowled/LBW/Caught/Stumping/Hit Wicket valid nahi. Sirf Run Out use करें.", true);
+    }
     this.pushUndo();
 
+    const runValue = Number(run || 0);
     const legal = !(isWide || isNo);
     const extraBase = isWide || isNo ? 1 : 0;
-    const totalRuns = Number(run) + extraBase;
-    const batRuns = (!isBye && !isLb) ? Number(run) : 0;
+    const totalRuns = runValue + extraBase;
+    const batRuns = (isWide || isBye || isLb) ? 0 : runValue;
     const extraRuns = totalRuns - batRuns;
     const bowlerRuns = (isBye || isLb) ? extraBase : totalRuns;
     const striker = s.striker === 1 ? s.bat1 : s.bat2;
@@ -392,9 +431,10 @@ window.app = {
       bs.balls += 1;
       s.partnershipBalls += 1;
       striker.b += 1;
-      if (batRuns === 0 && !isBye && !isLb && !isWicket) { s.bowler.dots += 1; bs.dots += 1; }
+      if (batRuns === 0 && !isBye && !isLb) { s.bowler.dots += 1; bs.dots += 1; }
     }
     if (batRuns) striker.r += batRuns;
+    if (legal && batRuns === 0) { striker.dots = Number(striker.dots || 0) + 1; striker.d = Number(striker.d || 0) + 1; }
     if (batRuns === 4) { striker.f += 1; striker.fours += 1; }
     if (batRuns === 6) { striker.s += 1; striker.sixes += 1; }
 
@@ -412,10 +452,10 @@ window.app = {
     const maxBalls = Number(s.totalOvers || 20) * 6;
     const chaseComplete = s.inningNumber > 1 && s.target && s.runs >= s.target;
     const allOut = s.wkts >= Math.max(this.currentBattingPlayers().length - 1, 1);
-    const inningsOver = legal && (s.balls >= maxBalls || allOut);
+    const inningsOver = (legal && s.balls >= maxBalls) || allOut;
 
     if (isWicket && !allOut && !chaseComplete && !inningsOver) await this.promptNextBatsman();
-    if (legal && Number(run) % 2 === 1) this.swapStrike(false);
+    if (runValue % 2 === 1) this.swapStrike(false);
 
     if (legal && s.balls % 6 === 0 && !inningsOver && !chaseComplete) {
       this.finishOver();
@@ -440,9 +480,15 @@ window.app = {
   },
 
   ballLabel(run, flags) {
-    if (flags.isWicket) return Number(run) ? `W${run}` : "W";
-    if (flags.isWide) return Number(run) ? `${Number(run) + 1}Wd` : "Wd";
-    if (flags.isNo) return Number(run) ? `${Number(run) + 1}Nb` : "Nb";
+    const n = Number(run || 0);
+    // Run-out can happen on Wide/No-Ball. Keep the wicket marker in the label
+    // without hiding the extra type, so the ball strip/commentary does not look
+    // like a normal legal-ball wicket.
+    if (flags.isWicket && flags.isWide) return n ? `W+${n + 1}Wd` : "W+Wd";
+    if (flags.isWicket && flags.isNo) return n ? `W+${n + 1}Nb` : "W+Nb";
+    if (flags.isWicket) return n ? `W${n}` : "W";
+    if (flags.isWide) return n ? `${n + 1}Wd` : "Wd";
+    if (flags.isNo) return n ? `${n + 1}Nb` : "Nb";
     if (flags.isBye) return `${run}B`;
     if (flags.isLb) return `${run}LB`;
     return String(run);
@@ -496,7 +542,7 @@ window.app = {
     const picked = await this.pick(manual ? "Change Bowler" : "Over complete - Select Next Bowler", (list.length ? list : fallback).map(p => p.name), true);
     if (!picked) return;
     const p = this.currentBowlingPlayers().find(x => x.name === picked) || { name: picked, playerId: safeId(picked) };
-    this.state.bowler = { playerId: p.playerId, name: p.name, balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
+    this.state.bowler = this.bowlerFromStats(p);
     this.render();
     await this.pushLive();
   },
@@ -508,9 +554,11 @@ window.app = {
     const list = this.currentBattingPlayers().filter(p => p.name !== other && !this.state.dismissed.includes(p.name));
     const picked = await this.pick("Select Batsman", list.map(p => p.name), true);
     if (!picked) return;
+    const old = slot === 1 ? this.state.bat1 : this.state.bat2;
+    this.upsertBatter(old);
     const p = list.find(x => x.name === picked) || { name: picked, playerId: safeId(picked) };
     if (slot === 1) this.state.bat1 = normalizeBatter({ playerId: p.playerId, name: p.name }); else this.state.bat2 = normalizeBatter({ playerId: p.playerId, name: p.name });
-    this.render(); await this.pushLive();
+    this.render(); await this.saveAll(true);
   },
 
   async retireBatsman() {
@@ -568,7 +616,7 @@ window.app = {
       if (!s || !ns || !bo || s.playerId === ns.playerId) return this.toast("Valid striker, non-striker, bowler select करें", true);
       this.state.bat1 = normalizeBatter({ playerId: s.playerId, name: s.name, position: 1 });
       this.state.bat2 = normalizeBatter({ playerId: ns.playerId, name: ns.name, position: 2 });
-      this.state.bowler = { playerId: bo.playerId, name: bo.name, balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
+      this.state.bowler = this.bowlerFromStats(bo);
       $("inningsModal").classList.remove("show");
       await this.saveAll(true); this.render(); this.toast("Second innings started");
     };
@@ -591,6 +639,8 @@ window.app = {
 
   async completeMatch(auto = false) {
     if (!this.state.matchId) return this.toast("No match", true);
+    if (this.state.matchFinished) return this.toast("Match already completed", true);
+    if (!auto && Number(this.state.inningNumber || 1) < 2) return this.toast("पहली innings के बाद Complete Match नहीं, Switch Innings use करें.", true);
     if (!auto && !confirm("Complete match and save permanent history?")) return;
     this.saveCurrentInnings();
     if (!this.state.winnerText) this.state.winnerText = this.deriveWinnerText();
@@ -621,10 +671,12 @@ window.app = {
 
   saveCurrentInnings() {
     const team = this.state.battingTeam?.name || "Innings";
-    this.upsertBatter({ ...this.state.bat1, out: false });
-    this.upsertBatter({ ...this.state.bat2, out: false });
+    this.upsertBatter(this.state.bat1);
+    this.upsertBatter(this.state.bat2);
     const detail = {
       team,
+      battingTeam: this.state.battingTeam?.name || team,
+      bowlingTeam: this.state.bowlingTeam?.name || "",
       runs: this.state.runs,
       wkts: this.state.wkts,
       balls: this.state.balls,
@@ -649,18 +701,38 @@ window.app = {
     else this.state.battingScorecard.push(clean);
   },
 
+  bowlerFromStats(player = {}) {
+    const name = player.name || "-";
+    const saved = this.state.bowlerStats?.[name] || {};
+    return {
+      playerId: player.playerId || saved.playerId || "",
+      name,
+      balls: Number(saved.balls || 0),
+      r: Number(saved.runs ?? saved.r ?? 0),
+      w: Number(saved.wkts ?? saved.w ?? 0),
+      runs: Number(saved.runs ?? saved.r ?? 0),
+      wkts: Number(saved.wkts ?? saved.w ?? 0),
+      dots: Number(saved.dots || 0),
+      wides: Number(saved.wides || 0),
+      noBalls: Number(saved.noBalls || 0)
+    };
+  },
+
   playerStatsForMatch() {
     const out = {};
+    const teamNames = [this.state.teamA?.name, this.state.teamB?.name].filter(Boolean);
+    const oppositeTeam = (batTeam) => teamNames.find(n => n && n !== batTeam) || "";
     Object.values(this.state.inningsDetails || {}).forEach(inn => {
+      const bowlingTeam = inn.bowlingTeam || oppositeTeam(inn.team || inn.battingTeam || "");
       (inn.battingScorecard || []).forEach((b, i) => {
         const key = b.playerId || safeId(b.name);
         out[key] = out[key] || { playerId: key, playerName: b.name, teamName: inn.team, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, bowlingBalls: 0, bowlingRuns: 0 };
-        out[key].runs += Number(b.r || 0); out[key].balls += Number(b.b || 0); out[key].fours += Number(b.f || 0); out[key].sixes += Number(b.s || 0); out[key].strikeRate = calcSR(out[key].runs, out[key].balls); out[key].battingPosition = i + 1;
+        out[key].runs += Number(b.r || 0); out[key].balls += Number(b.b || 0); out[key].dots = Number(out[key].dots || 0) + Number(b.dots || b.d || 0); out[key].battingDots = Number(out[key].battingDots || 0) + Number(b.dots || b.d || 0); out[key].fours += Number(b.f || 0); out[key].sixes += Number(b.s || 0); out[key].strikeRate = calcSR(out[key].runs, out[key].balls); out[key].battingPosition = i + 1;
       });
       Object.entries(inn.bowlerStats || {}).forEach(([name, s]) => {
         const key = s.playerId || safeId(name);
-        out[key] = out[key] || { playerId: key, playerName: name, teamName: "", runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, bowlingBalls: 0, bowlingRuns: 0 };
-        out[key].wickets += Number(s.wkts || 0); out[key].bowlingBalls += Number(s.balls || 0); out[key].bowlingRuns += Number(s.runs || 0); out[key].economy = calcER(out[key].bowlingRuns, out[key].bowlingBalls); out[key].dots = Number(s.dots || 0);
+        out[key] = out[key] || { playerId: key, playerName: name, teamName: bowlingTeam, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, bowlingBalls: 0, bowlingRuns: 0 };
+        out[key].wickets += Number(s.wkts || 0); out[key].bowlingBalls += Number(s.balls || 0); out[key].bowlingRuns += Number(s.runs || 0); out[key].bowlingDots = Number(out[key].bowlingDots || 0) + Number(s.dots || 0); out[key].economy = calcER(out[key].bowlingRuns, out[key].bowlingBalls);
       });
     });
     return out;
@@ -672,6 +744,13 @@ window.app = {
     return best ? best.playerName : "";
   },
 
+  pointsBallsForTeam(teamName, innings = {}) {
+    const normalBalls = Number(innings.balls || 0);
+    const players = Object.keys(this.state.teamInfo?.[teamName]?.players || {}).length || (this.state.teams?.[teamName] || []).length || 0;
+    const allOut = Number(innings.wkts || 0) >= Math.max(players - 1, 1);
+    return allOut ? Number(this.state.totalOvers || 20) * 6 : normalBalls;
+  },
+
   updatePointsTable() {
     const league = this.state.league;
     if (!league) return;
@@ -679,6 +758,18 @@ window.app = {
     const a = this.state.teamA.name, b = this.state.teamB.name;
     [a, b].forEach(t => pts[t] = pts[t] || { P: 0, W: 0, L: 0, T: 0, NR: 0, Pts: 0, RF: 0, BF: 0, RA: 0, BA: 0 });
     pts[a].P++; pts[b].P++;
+
+    const innA = this.state.inningsDetails?.[a] || {};
+    const innB = this.state.inningsDetails?.[b] || {};
+    pts[a].RF += Number(innA.runs || 0);
+    pts[a].BF += this.pointsBallsForTeam(a, innA);
+    pts[a].RA += Number(innB.runs || 0);
+    pts[a].BA += this.pointsBallsForTeam(b, innB);
+    pts[b].RF += Number(innB.runs || 0);
+    pts[b].BF += this.pointsBallsForTeam(b, innB);
+    pts[b].RA += Number(innA.runs || 0);
+    pts[b].BA += this.pointsBallsForTeam(a, innA);
+
     if (/tied/i.test(this.state.winnerText)) { pts[a].T++; pts[b].T++; pts[a].Pts++; pts[b].Pts++; }
     else if (this.state.winnerText.startsWith(a)) { pts[a].W++; pts[b].L++; pts[a].Pts += 2; }
     else if (this.state.winnerText.startsWith(b)) { pts[b].W++; pts[a].L++; pts[b].Pts += 2; }
