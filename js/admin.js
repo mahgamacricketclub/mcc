@@ -68,6 +68,7 @@ const blankState = () => normalizeState({
   pointsTable: {},
   league: null,
   winnerText: "",
+  superOver: null,
   mvp: "",
   playerOfMatch: "",
   followLink: "",
@@ -99,11 +100,11 @@ window.app = {
       try {
         this.adminOk = await isAdmin(user.uid);
       } catch (e) {
-        this.toast("Admin check failed: " + e.message, true);
+        this.toast("Unable to verify admin access: " + e.message, true);
         return this.showLogin();
       }
       if (!this.adminOk) {
-        this.toast("यह account admin नहीं है. Firestore admins/{uid} check करें.", true);
+        this.toast("This account does not have admin access. Check Firestore admins/{uid}.", true);
         await logoutAdmin().catch(() => {});
         return this.showLogin();
       }
@@ -113,12 +114,13 @@ window.app = {
   },
 
   bindBaseEvents() {
+    this.ensureEliminatorControl();
     $("loginBtn").onclick = () => this.login();
     $("loginPassword").addEventListener("keydown", e => { if (e.key === "Enter") this.login(); });
     $("logoutBtn").onclick = () => logoutAdmin();
     document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => this.openPage(btn.dataset.page));
     ["teamASelect", "teamBSelect", "tossDecision", "tossWinner", "openingStriker"].forEach(id => $(id).addEventListener("change", () => this.refreshSetupPlayers()));
-    $("startMatchBtn").onclick = () => this.startMatch();
+    $("startMatchBtn").onclick = () => this.runOnce("startMatch", "startMatchBtn", () => this.startMatch());
     $("copyLinkBtn").onclick = () => this.copyPublicLink();
     $("openUserBtn").onclick = () => window.open(this.publicLink(), "_blank");
     document.querySelectorAll(".run-grid button").forEach(b => b.onclick = () => this.scoreBall(b.dataset.custom ? "custom" : Number(b.textContent)));
@@ -130,26 +132,64 @@ window.app = {
     $("changeBatsmanBtn").onclick = () => this.changeBatsman();
     $("changeBowlerBtn").onclick = () => this.changeBowler(true);
     $("switchInningsBtn").onclick = () => this.askSwitchInnings();
-    $("manualSaveBtn").onclick = () => this.manualSaveScore();
-    $("completeBtn").onclick = () => this.completeMatch();
+    $("startSuperOverBtn").onclick = () => this.runOnce("startSuperOver", "startSuperOverBtn", () => this.startSuperOver());
+    $("manualSaveBtn").onclick = () => this.runOnce("manualSave", "manualSaveBtn", () => this.manualSaveScore());
+    $("completeBtn").onclick = () => this.runOnce("completeMatch", "completeBtn", () => this.completeMatch());
     $("lockBtn").onclick = () => this.setLock(true);
     $("unlockBtn").onclick = () => this.setLock(false);
+    $("showTimeBtn").onclick = () => this.setTimedMode();
     document.querySelectorAll(".mode").forEach(b => b.onclick = () => this.setMode(b.dataset.mode));
-    $("saveTeamBtn").onclick = () => this.saveTeamForm();
+    $("saveTeamBtn").onclick = () => this.runOnce("saveTeam", "saveTeamBtn", () => this.saveTeamForm());
     $("newTeamBtn").onclick = () => this.clearTeamForm();
-    $("deleteTeamBtn").onclick = () => this.deleteSelectedTeam();
-    $("savePlayerBtn").onclick = () => this.savePlayerForm();
+    $("deleteTeamBtn").onclick = () => this.runOnce("deleteTeam", "deleteTeamBtn", () => this.deleteSelectedTeam());
+    $("savePlayerBtn").onclick = () => this.runOnce("savePlayer", "savePlayerBtn", () => this.savePlayerForm());
     $("newPlayerBtn").onclick = () => this.clearPlayerForm();
-    $("deletePlayerBtn").onclick = () => this.deleteSelectedPlayer();
+    $("deletePlayerBtn").onclick = () => this.runOnce("deletePlayer", "deletePlayerBtn", () => this.deleteSelectedPlayer());
     $("teamLogoFile").onchange = e => this.uploadImage(e.target.files[0], "teamLogo");
     $("playerImageFile").onchange = e => this.uploadImage(e.target.files[0], "playerImage");
     $("leagueLogoFile").onchange = e => this.uploadImage(e.target.files[0], "leagueLogo");
-    $("generateScheduleBtn").onclick = () => this.generateSchedule();
-    $("saveLeagueBtn").onclick = () => this.saveLeagueForm();
+    if ($("loadLeagueBtn")) $("loadLeagueBtn").onclick = () => this.loadSelectedLeagueForEdit();
+    if ($("newLeagueBtn")) $("newLeagueBtn").onclick = () => this.newLeagueEditor();
+    if ($("deleteLeagueBtn")) $("deleteLeagueBtn").onclick = () => this.runOnce("deleteLeague", "deleteLeagueBtn", () => this.deleteSelectedLeague());
+    $("generateScheduleBtn").onclick = () => this.runOnce("generateSchedule", "generateScheduleBtn", () => this.generateSchedule());
+    if ($("autoFillPlayoffsBtn")) $("autoFillPlayoffsBtn").onclick = () => this.autoFillPlayoffs();
+    $("saveLeagueBtn").onclick = () => this.runOnce("saveLeague", "saveLeagueBtn", () => this.saveLeagueForm());
     $("clearLeagueBtn").onclick = () => this.clearLeagueForm();
     this.bindPicker();
     this.bindWicketModal();
     this.bindInningsModal();
+  },
+
+  async runOnce(key, buttonId, fn) {
+    this.busyActions = this.busyActions || {};
+    if (this.busyActions[key]) return;
+    this.busyActions[key] = true;
+    const btn = buttonId ? $(buttonId) : null;
+    const oldText = btn?.textContent;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+    }
+    try {
+      return await fn();
+    } catch (e) {
+      this.toast(e.message || String(e), true);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = oldText;
+      }
+      this.busyActions[key] = false;
+    }
+  },
+
+  ensureEliminatorControl() {
+    if ($("includeEliminator")) return;
+    const playoffToggle = $("iplPlayoffs");
+    if (!playoffToggle) return;
+    const label = document.createElement("label");
+    label.innerHTML = `Eliminator<select id="includeEliminator"><option value="on" selected>On</option><option value="off">Off</option></select>`;
+    playoffToggle.closest("label")?.after(label);
   },
 
   async login() {
@@ -161,7 +201,7 @@ window.app = {
     }
   },
   authError(code) {
-    if (String(code).includes("invalid")) return "Email/password galat hai.";
+    if (String(code).includes("invalid")) return "Invalid email or password.";
     if (String(code).includes("permission")) return "Permission denied.";
     return String(code);
   },
@@ -241,13 +281,13 @@ window.app = {
 
   async continueRecoveredMatch() {
     const saved = this.getActiveBackup();
-    if (!saved) return this.toast("Continue backup नहीं मिला", true);
+    if (!saved) return this.toast("No recoverable match backup found.", true);
     this.state = normalizeState(saved.state);
     this.currentMatchId = this.state.matchId;
     this.openPage("live");
     this.render();
     await this.saveAll(true);
-    this.toast("Match वहीं से continue हो गया");
+    this.toast("Match restored from the saved backup.");
   },
 
   openPage(page) {
@@ -269,6 +309,7 @@ window.app = {
 
   fillLeagueSelectors() {
     $("setupLeague").innerHTML = `<option value="">No League</option>` + this.leagues.map(l => `<option value="${l.leagueId}">${this.safe(l.name)}</option>`).join("");
+    if ($("leagueManageSelect")) $("leagueManageSelect").innerHTML = `<option value="">Select league to edit</option>` + this.leagues.map(l => `<option value="${l.leagueId}">${this.safe(l.name)}${l.season ? " - " + this.safe(l.season) : ""}</option>`).join("");
   },
 
   async refreshSetupPlayers() {
@@ -326,19 +367,19 @@ window.app = {
   async startMatch() {
     const teamA = this.teamById($("teamASelect").value);
     const teamB = this.teamById($("teamBSelect").value);
-    if (!teamA || !teamB || teamA.teamId === teamB.teamId) return this.toast("दो अलग-अलग teams select करें", true);
+    if (!teamA || !teamB || teamA.teamId === teamB.teamId) return this.toast("Select two different teams.", true);
     const tossTeam = this.teamById($("tossWinner").value) || teamA;
-    if (![teamA.teamId, teamB.teamId].includes(tossTeam.teamId)) return this.toast("Toss winner sirf Team A ya Team B ho sakta hai", true);
+    if (![teamA.teamId, teamB.teamId].includes(tossTeam.teamId)) return this.toast("Toss winner must be Team A or Team B.", true);
     const otherTeam = tossTeam.teamId === teamA.teamId ? teamB : teamA;
     const batting = $("tossDecision").value === "bat" ? tossTeam : otherTeam;
     const bowling = $("tossDecision").value === "bat" ? otherTeam : tossTeam;
     const totalOvers = Number($("totalOvers").value || 0);
-    if (!Number.isFinite(totalOvers) || totalOvers <= 0) return this.toast("Total overs 1 ya usse zyada hona चाहिए", true);
+    if (!Number.isFinite(totalOvers) || totalOvers <= 0) return this.toast("Total overs must be at least 1.", true);
     const striker = this.playerById(batting, $("openingStriker").value);
     const nonStriker = this.playerById(batting, $("openingNonStriker").value);
     const bowler = this.playerById(bowling, $("openingBowler").value);
-    if (!striker || !nonStriker || !bowler) return this.toast("Opening striker, non-striker और bowler select करें", true);
-    if (striker.playerId === nonStriker.playerId) return this.toast("Striker और non-striker same नहीं हो सकते", true);
+    if (!striker || !nonStriker || !bowler) return this.toast("Select opening striker, non-striker, and bowler.", true);
+    if (striker.playerId === nonStriker.playerId) return this.toast("Striker and non-striker must be different players.", true);
     const league = this.leagues.find(l => l.leagueId === $("setupLeague").value) || null;
     const matchId = this.newMatchId();
     this.currentMatchId = matchId;
@@ -349,6 +390,10 @@ window.app = {
       leagueId: league?.leagueId || "",
       leagueName: league?.name || "",
       league: league || null,
+      fixtureId: this.pendingFixture?.id || "",
+      leagueStage: this.pendingFixture?.stage || "",
+      leagueRound: this.pendingFixture?.round || "",
+      leagueMatchNo: this.pendingFixture?.matchNo || "",
       venue: $("venue").value.trim(),
       matchDate: $("matchDate").value,
       matchTime: $("matchTime").value,
@@ -373,35 +418,37 @@ window.app = {
       teamInfo: this.teamInfoMap(),
       pointsTable: league?.pointsTable || {}
     });
+    this.pendingFixture = null;
     this.persistActiveMatch();
     await this.saveAll(true);
     await saveSavedLink({ matchId, name: this.state.matchTitle, url: this.publicLink(), createdAt: Date.now() });
     $("publicLink").textContent = this.publicLink();
     this.openPage("live");
-    this.toast("New match live हो गया");
+    this.toast("Match is now live.");
   },
 
   teamsToMap() { const out = {}; this.teams.forEach(t => out[t.name] = (t.players || []).map(p => p.name)); return out; },
   teamInfoMap() { const out = {}; this.teams.forEach(t => { out[t.name] = { teamId: t.teamId, shortName: t.shortName || this.short(t.name), logo: t.logo || "", players: {} }; (t.players || []).forEach(p => out[t.name].players[p.name] = { ...p }); }); return out; },
   publicLink() { return new URL(`user.html?match=${this.currentMatchId || this.state.matchId || ""}`, location.href).href; },
   qrCodeUrl(link) { return link ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}` : ""; },
-  async copyPublicLink() { const link = this.publicLink(); try { await navigator.clipboard.writeText(link); this.toast("Public link copied"); } catch { prompt("Copy link", link); } },
+  async copyPublicLink() { const link = this.publicLink(); try { await navigator.clipboard.writeText(link); this.toast("Public link copied."); } catch { prompt("Copy public link", link); } },
 
   async scoreBall(run) {
     const s = this.state = normalizeState(this.state);
-    if (!s.matchId) return this.toast("पहले match start करें", true);
-    if (s.matchFinished) return this.toast("Match completed है", true);
-    if (s.scoringLocked) return this.toast("Scoring locked है", true);
-    if (run === "custom") { const v = prompt("Runs"); if (v === null || isNaN(v)) return; run = Number(v); }
+    if (!s.matchId) return this.toast("Start a match first.", true);
+    if (s.matchFinished) return this.toast("This match has already been completed.", true);
+    if (s.scoringLocked) return this.toast("Scoring is locked.", true);
+    if (!(await this.ensureLivePlayersSelected())) return;
+    if (run === "custom") { const v = prompt("Enter runs"); if (v === null || isNaN(v)) return; run = Number(v); }
     const isWide = $("wide").checked, isNo = $("noball").checked, isBye = $("bye").checked, isLb = $("legbye").checked, isWicket = $("wicket").checked;
-    if (isWide && isNo) return this.toast("Wide aur No Ball ek साथ select नहीं हो सकते.", true);
-    if (isBye && isLb) return this.toast("Bye aur Leg Bye ek साथ select नहीं हो सकते.", true);
-    if (isWide && (isBye || isLb)) return this.toast("Wide ke साथ Bye/Leg Bye select न करें. Wide runs को run button से add करें.", true);
+    if (isWide && isNo) return this.toast("Wide and No Ball cannot be selected together.", true);
+    if (isBye && isLb) return this.toast("Bye and Leg Bye cannot be selected together.", true);
+    if (isWide && (isBye || isLb)) return this.toast("Do not combine Wide with Bye or Leg Bye. Add wide runs with the run button.", true);
     if (isWicket && !this.pendingWicket) return this.openWicketModal();
     if (isNo && isWicket && !["Run Out", "Retired Out"].includes(this.pendingWicket?.type)) {
       $("wicket").checked = false;
       this.pendingWicket = null;
-      return this.toast("No-ball par Bowled/LBW/Caught/Stumping/Hit Wicket valid nahi. Sirf Run Out use करें.", true);
+      return this.toast("Only Run Out is valid as a wicket on a No Ball.", true);
     }
     this.pushUndo();
 
@@ -468,15 +515,33 @@ window.app = {
 
     if (s.inningNumber === 1 && inningsOver) {
       this.finishOver(true);
-      await this.askSwitchInnings();
+      const switched = await this.askSwitchInnings();
+      if (!switched) {
+        this.render();
+        await this.saveAll(true);
+        return;
+      }
     } else if (s.inningNumber > 1 && (chaseComplete || inningsOver)) {
       this.finishOver(true);
-      await this.finishMatchByCondition();
+      if (this.isSuperOverActive()) await this.finishSuperOverInnings();
+      else await this.finishMatchByCondition();
     }
 
     this.clearBallTypes();
     this.render();
     await this.saveAll(true);
+  },
+
+  async ensureLivePlayersSelected() {
+    const s = this.state;
+    const validBat1 = s.bat1?.name && s.bat1.name !== "-";
+    const validBat2 = s.bat2?.name && s.bat2.name !== "-";
+    const validBowler = s.bowler?.name && s.bowler.name !== "-";
+    if (validBat1 && validBat2 && validBowler && s.bat1.name !== s.bat2.name) return true;
+    this.toast("Select striker, non-striker, and bowler before scoring.", true);
+    const started = await this.openInningsModal();
+    if (!started) return false;
+    return !!(this.state.bat1?.name && this.state.bat1.name !== "-" && this.state.bat2?.name && this.state.bat2.name !== "-" && this.state.bowler?.name && this.state.bowler.name !== "-");
   },
 
   ballLabel(run, flags) {
@@ -578,8 +643,9 @@ window.app = {
   },
 
   async askSwitchInnings() {
-    if (!this.state.matchId || this.state.inningNumber > 1) return this.toast("Second innings already running", true);
-    if (!confirm("First innings save करके second innings start करें?")) return;
+    if (!this.state.matchId || this.state.inningNumber > 1) { this.toast("Second innings is already active.", true); return false; }
+    if (!confirm("Save the first innings and start the second innings?")) return false;
+    const before = clone(this.state);
     this.saveCurrentInnings();
     this.state.firstInningsScore = this.state.runs;
     this.state.firstInningsWkts = this.state.wkts;
@@ -593,39 +659,50 @@ window.app = {
     this.state.bat1 = normalizeBatter({ name: "-" });
     this.state.bat2 = normalizeBatter({ name: "-" });
     this.state.bowler = { name: "-", balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
-    this.openInningsModal();
+    const started = await this.openInningsModal();
+    if (!started) {
+      this.state = normalizeState(before);
+      this.toast("Second innings was not started. Select players to continue.", true);
+      return false;
+    }
+    return true;
   },
 
   openInningsModal() {
-    const bat = this.currentBattingPlayers();
-    const bowl = this.currentBowlingPlayers();
-    $("inningsTargetText").textContent = `Target: ${this.state.target}`;
-    $("nextStriker").innerHTML = bat.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
-    $("nextNonStriker").innerHTML = bat.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
-    $("nextBowler").innerHTML = bowl.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
-    $("inningsModal").classList.add("show");
+    return new Promise(resolve => {
+      this.inningsResolve = resolve;
+      const bat = this.currentBattingPlayers();
+      const bowl = this.currentBowlingPlayers();
+      $("inningsTargetText").textContent = `Target: ${this.state.target}`;
+      $("nextStriker").innerHTML = bat.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
+      $("nextNonStriker").innerHTML = bat.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
+      $("nextBowler").innerHTML = bowl.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
+      $("inningsModal").classList.add("show");
+    });
   },
 
   bindInningsModal() {
-    $("inningsCancel").onclick = () => $("inningsModal").classList.remove("show");
+    $("inningsCancel").onclick = () => { $("inningsModal").classList.remove("show"); if (this.inningsResolve) this.inningsResolve(false); this.inningsResolve = null; };
     $("inningsStart").onclick = async () => {
       const bat = this.currentBattingPlayers(), bowl = this.currentBowlingPlayers();
       const s = bat.find(p => p.playerId === $("nextStriker").value);
       const ns = bat.find(p => p.playerId === $("nextNonStriker").value);
       const bo = bowl.find(p => p.playerId === $("nextBowler").value);
-      if (!s || !ns || !bo || s.playerId === ns.playerId) return this.toast("Valid striker, non-striker, bowler select करें", true);
+      if (!s || !ns || !bo || s.playerId === ns.playerId) return this.toast("Select a valid striker, non-striker, and bowler.", true);
       this.state.bat1 = normalizeBatter({ playerId: s.playerId, name: s.name, position: 1 });
       this.state.bat2 = normalizeBatter({ playerId: ns.playerId, name: ns.name, position: 2 });
       this.state.bowler = this.bowlerFromStats(bo);
       $("inningsModal").classList.remove("show");
-      await this.saveAll(true); this.render(); this.toast("Second innings started");
+      if (this.inningsResolve) this.inningsResolve(true);
+      this.inningsResolve = null;
+      await this.saveAll(true); this.render(); this.toast("Second innings started.");
     };
   },
 
   async finishMatchByCondition() {
     const s = this.state;
     const target = Number(s.target || 0);
-    if (s.runs >= target) {
+    if (s.runs >= target && target > 0) {
       const teamSize = Math.max(this.currentBattingPlayers().length, 2);
       const wktsLeft = Math.max(teamSize - s.wkts - 1, 0);
       const ballsLeft = Math.max(Number(s.totalOvers || 20) * 6 - s.balls, 0);
@@ -634,16 +711,125 @@ window.app = {
       const margin = target - s.runs - 1;
       s.winnerText = margin === 0 ? "Match Tied" : `${s.bowlingTeam.name} won by ${margin} runs`;
     }
+    if (s.winnerText === "Match Tied") {
+      s.status = "tied";
+      s.liveControl = { mode: "paused", note: "Match Tied - Super Over Available" };
+      s.scoringLocked = true;
+      await this.saveAll(true);
+      this.render();
+      return this.toast("Match tied. Start Super Over to decide the winner.");
+    }
+    await this.completeMatch(true);
+  },
+
+  isSuperOverActive() {
+    return !!this.state.superOver?.active;
+  },
+
+  async startSuperOver() {
+    const s = this.state;
+    if (!s.matchId) return this.toast("No active match found.", true);
+    if (s.winnerText !== "Match Tied" && s.status !== "tied") return this.toast("Super Over is available only after a tied match.", true);
+    const first = s.secondBattingTeam || s.battingTeam;
+    const second = s.firstBattingTeam || s.bowlingTeam;
+    if (!first?.teamId || !second?.teamId) return this.toast("Team data is missing for Super Over.", true);
+    this.saveCurrentInnings();
+    s.superOver = { active: true, inning: 1, totalOvers: 1, teamA: first, teamB: second, first: null, second: null };
+    this.resetInningsForSuperOver(first, second, 1, null);
+    s.scoringLocked = false;
+    s.liveStarted = true;
+    s.status = "super-over";
+    s.liveControl = { mode: "live", note: "Super Over" };
+    await this.pickSuperOverPlayers();
+    await this.saveAll(true);
+    this.render();
+    this.toast("Super Over started.");
+  },
+
+  resetInningsForSuperOver(batting, bowling, inning, target) {
+    Object.assign(this.state, {
+      battingTeam: this.teamObj(this.teamById(batting.teamId)) || batting,
+      bowlingTeam: this.teamObj(this.teamById(bowling.teamId)) || bowling,
+      inningNumber: inning,
+      totalOvers: 1,
+      runs: 0,
+      wkts: 0,
+      balls: 0,
+      extras: 0,
+      target,
+      bat1: normalizeBatter({ name: "-" }),
+      bat2: normalizeBatter({ name: "-" }),
+      striker: 1,
+      bowler: { name: "-", playerId: "", balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 },
+      bowlerStats: {},
+      battingScorecard: [],
+      over: [],
+      overSummary: [],
+      recentBalls: [],
+      fallOfWickets: [],
+      partnershipRuns: 0,
+      partnershipBalls: 0,
+      lastWicket: "-",
+      dismissed: [],
+      retired: []
+    });
+  },
+
+  async pickSuperOverPlayers() {
+    const bat = this.currentBattingPlayers();
+    const bowl = this.currentBowlingPlayers();
+    const s1 = await this.pickName("Super Over striker", bat.map(p => ({ label: p.name, value: p.playerId })), true);
+    const ns = await this.pickName("Super Over non-striker", bat.filter(p => p.playerId !== s1).map(p => ({ label: p.name, value: p.playerId })), true);
+    const bo = await this.pickName("Super Over bowler", bowl.map(p => ({ label: p.name, value: p.playerId })), true);
+    const striker = bat.find(p => p.playerId === s1);
+    const non = bat.find(p => p.playerId === ns);
+    const bowler = bowl.find(p => p.playerId === bo);
+    if (!striker || !non || !bowler) return this.toast("Super Over players not selected.", true);
+    this.state.bat1 = normalizeBatter({ playerId: striker.playerId, name: striker.name, position: 1 });
+    this.state.bat2 = normalizeBatter({ playerId: non.playerId, name: non.name, position: 2 });
+    this.state.bowler = this.bowlerFromStats(bowler);
+  },
+
+  async finishSuperOverInnings() {
+    const s = this.state;
+    this.saveCurrentInnings();
+    if (s.superOver.inning === 1) {
+      s.superOver.first = { team: s.battingTeam, runs: s.runs, wkts: s.wkts, balls: s.balls, score: `${s.runs}/${s.wkts} (${overText(s.balls)})` };
+      const batting = s.superOver.teamB;
+      const bowling = s.superOver.teamA;
+      this.resetInningsForSuperOver(batting, bowling, 2, s.superOver.first.runs + 1);
+      s.superOver.inning = 2;
+      await this.pickSuperOverPlayers();
+      await this.saveAll(true);
+      this.render();
+      return this.toast("Super Over chase started.");
+    }
+    s.superOver.second = { team: s.battingTeam, runs: s.runs, wkts: s.wkts, balls: s.balls, score: `${s.runs}/${s.wkts} (${overText(s.balls)})` };
+    const a = s.superOver.first;
+    const b = s.superOver.second;
+    if (b.runs > a.runs) s.winnerText = `${b.team.name} won in Super Over`;
+    else if (a.runs > b.runs) s.winnerText = `${a.team.name} won in Super Over`;
+    else s.winnerText = "Match Tied after Super Over";
+    s.superOver.active = false;
+    s.superOver.completed = true;
     await this.completeMatch(true);
   },
 
   async completeMatch(auto = false) {
-    if (!this.state.matchId) return this.toast("No match", true);
-    if (this.state.matchFinished) return this.toast("Match already completed", true);
-    if (!auto && Number(this.state.inningNumber || 1) < 2) return this.toast("पहली innings के बाद Complete Match नहीं, Switch Innings use करें.", true);
-    if (!auto && !confirm("Complete match and save permanent history?")) return;
+    if (!this.state.matchId) return this.toast("No active match found.", true);
+    if (this.state.matchFinished) return this.toast("This match is already completed.", true);
+    if (!auto && Number(this.state.inningNumber || 1) < 2) return this.toast("Use Switch Innings before completing the match.", true);
+    if (!auto && !confirm("Complete this match and save it permanently?")) return;
     this.saveCurrentInnings();
     if (!this.state.winnerText) this.state.winnerText = this.deriveWinnerText();
+    if (this.state.winnerText === "Match Tied" && !this.state.superOver?.completed) {
+      this.state.status = "tied";
+      this.state.scoringLocked = true;
+      this.state.liveControl = { mode: "paused", note: "Match Tied - Super Over Available" };
+      await this.saveAll(true);
+      this.render();
+      return this.toast("Match tied. Start Super Over to decide the winner.");
+    }
     this.state.matchFinished = true;
     this.state.liveStarted = false;
     this.state.status = "completed";
@@ -652,14 +838,14 @@ window.app = {
     this.state.secondInnings = `${this.state.runs}/${this.state.wkts} (${overText(this.state.balls)})`;
     this.state.mvp = this.calculateMvp();
     this.state.playerOfMatch = this.state.mvp;
-    this.updatePointsTable();
+    await this.updateLeagueAfterCompletion();
     const final = storePayload(this.state, this.state.matchId, this.uid);
     await saveCompletedMatch(this.state.matchId, final);
     await savePlayerMatchStats(this.state.matchId, this.playerStatsForMatch());
     await this.pushLive();
     this.clearActiveMatchBackup();
     this.render();
-    this.toast("Match completed और history में save हो गया");
+    this.toast("Match completed and saved to history.");
   },
 
   deriveWinnerText() {
@@ -751,31 +937,154 @@ window.app = {
     return allOut ? Number(this.state.totalOvers || 20) * 6 : normalBalls;
   },
 
+  buildPointsImpact(status = "completed") {
+    const a = this.state.teamA?.name || "";
+    const b = this.state.teamB?.name || "";
+    if (!a || !b) return null;
+    const impact = {
+      matchId: this.state.matchId || "",
+      status,
+      teams: {
+        [a]: { P: 0, W: 0, L: 0, T: 0, NR: 0, Pts: 0, RF: 0, BF: 0, RA: 0, BA: 0 },
+        [b]: { P: 0, W: 0, L: 0, T: 0, NR: 0, Pts: 0, RF: 0, BF: 0, RA: 0, BA: 0 }
+      }
+    };
+    impact.teams[a].P++;
+    impact.teams[b].P++;
+    if (status === "no-result") {
+      impact.teams[a].NR++;
+      impact.teams[b].NR++;
+      impact.teams[a].Pts++;
+      impact.teams[b].Pts++;
+      return impact;
+    }
+    const innA = this.state.inningsDetails?.[a] || {};
+    const innB = this.state.inningsDetails?.[b] || {};
+    impact.teams[a].RF += Number(innA.runs || 0);
+    impact.teams[a].BF += this.pointsBallsForTeam(a, innA);
+    impact.teams[a].RA += Number(innB.runs || 0);
+    impact.teams[a].BA += this.pointsBallsForTeam(b, innB);
+    impact.teams[b].RF += Number(innB.runs || 0);
+    impact.teams[b].BF += this.pointsBallsForTeam(b, innB);
+    impact.teams[b].RA += Number(innA.runs || 0);
+    impact.teams[b].BA += this.pointsBallsForTeam(a, innA);
+    if (/tied/i.test(this.state.winnerText) && !/super over/i.test(this.state.winnerText)) {
+      impact.teams[a].T++; impact.teams[b].T++; impact.teams[a].Pts++; impact.teams[b].Pts++;
+    } else if (this.state.winnerText.startsWith(a) || this.state.winnerText.includes(`${a} won in Super Over`)) {
+      impact.teams[a].W++; impact.teams[b].L++; impact.teams[a].Pts += 2;
+    } else if (this.state.winnerText.startsWith(b) || this.state.winnerText.includes(`${b} won in Super Over`)) {
+      impact.teams[b].W++; impact.teams[a].L++; impact.teams[b].Pts += 2;
+    }
+    return impact;
+  },
+
+  applyPointsImpact(league, impact, direction = 1) {
+    if (!league || !impact?.teams) return;
+    const pts = league.pointsTable || {};
+    Object.entries(impact.teams).forEach(([team, delta]) => {
+      pts[team] = pts[team] || { P: 0, W: 0, L: 0, T: 0, NR: 0, Pts: 0, RF: 0, BF: 0, RA: 0, BA: 0 };
+      ["P", "W", "L", "T", "NR", "Pts", "RF", "BF", "RA", "BA"].forEach(k => {
+        pts[team][k] = Math.max(0, Number(pts[team][k] || 0) + Number(delta[k] || 0) * direction);
+      });
+    });
+    league.pointsTable = pts;
+  },
+
   updatePointsTable() {
     const league = this.state.league;
     if (!league) return;
-    const pts = this.state.pointsTable || {};
-    const a = this.state.teamA.name, b = this.state.teamB.name;
-    [a, b].forEach(t => pts[t] = pts[t] || { P: 0, W: 0, L: 0, T: 0, NR: 0, Pts: 0, RF: 0, BF: 0, RA: 0, BA: 0 });
-    pts[a].P++; pts[b].P++;
+    const applied = league.pointsAppliedMatchIds || {};
+    if (this.state.matchId && applied[this.state.matchId]) return;
+    const impact = this.buildPointsImpact("completed");
+    this.applyPointsImpact(league, impact, 1);
+    league.pointsAppliedMatchIds = { ...applied, [this.state.matchId]: true };
+    this.state.pointsTable = league.pointsTable || {};
+    this.state.pointsImpact = impact;
+  },
 
-    const innA = this.state.inningsDetails?.[a] || {};
-    const innB = this.state.inningsDetails?.[b] || {};
-    pts[a].RF += Number(innA.runs || 0);
-    pts[a].BF += this.pointsBallsForTeam(a, innA);
-    pts[a].RA += Number(innB.runs || 0);
-    pts[a].BA += this.pointsBallsForTeam(b, innB);
-    pts[b].RF += Number(innB.runs || 0);
-    pts[b].BF += this.pointsBallsForTeam(b, innB);
-    pts[b].RA += Number(innA.runs || 0);
-    pts[b].BA += this.pointsBallsForTeam(a, innA);
+  async updateLeagueAfterCompletion() {
+    const league = this.state.league;
+    if (!league?.leagueId) return;
+    this.updatePointsTable();
+    this.markLeagueFixtureCompleted(league);
+    this.state.league = league;
+    await saveLeague(league);
+  },
 
-    if (/tied/i.test(this.state.winnerText)) { pts[a].T++; pts[b].T++; pts[a].Pts++; pts[b].Pts++; }
-    else if (this.state.winnerText.startsWith(a)) { pts[a].W++; pts[b].L++; pts[a].Pts += 2; }
-    else if (this.state.winnerText.startsWith(b)) { pts[b].W++; pts[a].L++; pts[b].Pts += 2; }
-    this.state.pointsTable = pts;
-    league.pointsTable = pts;
-    saveLeague(league).catch(console.warn);
+  markLeagueFixtureCompleted(league) {
+    const schedule = Array.isArray(league.schedule) ? league.schedule : [];
+    if (!schedule.length) return;
+    const teamAId = this.state.teamA?.teamId || "";
+    const teamBId = this.state.teamB?.teamId || "";
+    const teamAName = this.state.teamA?.name || "";
+    const teamBName = this.state.teamB?.name || "";
+    const sameTeam = (fixtureTeam = {}, id, name) => {
+      const fixtureId = fixtureTeam?.teamId || "";
+      const fixtureName = fixtureTeam?.name || String(fixtureTeam || "");
+      return (id && fixtureId === id) || (name && fixtureName === name);
+    };
+    const sameMatch = (fixture) => {
+      if (this.state.fixtureId && fixture.id === this.state.fixtureId) return true;
+      const direct = sameTeam(fixture.teamA, teamAId, teamAName) && sameTeam(fixture.teamB, teamBId, teamBName);
+      const reverse = sameTeam(fixture.teamA, teamBId, teamBName) && sameTeam(fixture.teamB, teamAId, teamAName);
+      return direct || reverse;
+    };
+    const fixture = schedule.find(m => sameMatch(m) && !["completed", "done"].includes(String(m.status || "").toLowerCase()));
+    if (!fixture) return;
+    Object.assign(fixture, {
+      status: "completed",
+      matchId: this.state.matchId,
+      winnerText: this.state.winnerText || "",
+      result: this.state.winnerText || "",
+      firstInnings: this.state.firstInnings || "",
+      secondInnings: this.state.secondInnings || "",
+      pointsImpact: this.state.pointsImpact || this.buildPointsImpact("completed"),
+      completedAt: Date.now()
+    });
+    this.state.leagueStage = fixture.stage || "";
+    this.state.leagueRound = fixture.round || "";
+    this.state.leagueMatchNo = fixture.matchNo || "";
+    this.updatePlayoffProgression(league, fixture);
+  },
+
+  updatePlayoffProgression(league, completedFixture) {
+    const schedule = Array.isArray(league.schedule) ? league.schedule : [];
+    const stage = String(completedFixture.stage || "").toLowerCase();
+    const winner = this.winnerTeamObj();
+    const loser = this.loserTeamObj();
+    if (!winner) return;
+    const setSlot = (targetStage, field, team) => {
+      const row = schedule.find(m => String(m.stage || "").toLowerCase() === targetStage.toLowerCase());
+      if (row && team) row[field] = this.teamObj(this.teamById(team.teamId)) || team;
+    };
+    if (stage === "qualifier 1") {
+      setSlot("Final", "teamA", winner);
+      setSlot("Qualifier 2", "teamA", loser);
+    } else if (stage === "eliminator") {
+      setSlot("Qualifier 2", "teamB", winner);
+    } else if (stage === "qualifier 2") {
+      setSlot("Final", "teamB", winner);
+    } else if (/semi final|semifinal/.test(stage)) {
+      const final = schedule.find(m => String(m.stage || "").toLowerCase() === "final");
+      if (final) {
+        const field = /1/.test(String(completedFixture.round || completedFixture.matchNo || "")) || String(final.teamA?.name || "").includes("Winner") ? "teamA" : "teamB";
+        final[field] = this.teamObj(this.teamById(winner.teamId)) || winner;
+      }
+    }
+  },
+
+  winnerTeamObj() {
+    const a = this.state.teamA, b = this.state.teamB;
+    if (!a || !b || (/tied/i.test(this.state.winnerText || "") && !/super over/i.test(this.state.winnerText || ""))) return null;
+    if (this.state.winnerText.startsWith(a.name) || this.state.winnerText.includes(`${a.name} won in Super Over`)) return a;
+    if (this.state.winnerText.startsWith(b.name) || this.state.winnerText.includes(`${b.name} won in Super Over`)) return b;
+    return null;
+  },
+
+  loserTeamObj() {
+    const winner = this.winnerTeamObj();
+    if (!winner) return null;
+    return winner.teamId === this.state.teamA?.teamId ? this.state.teamB : this.state.teamA;
   },
 
   currentBattingPlayers() { const team = this.teams.find(t => t.teamId === this.state.battingTeam?.teamId); return team?.players || []; },
@@ -783,9 +1092,17 @@ window.app = {
   swapStrike(render = true) { this.state.striker = this.state.striker === 1 ? 2 : 1; if (render) this.render(); },
   setLock(flag) { this.state.scoringLocked = flag; this.render(); this.pushLive(); },
   setMode(mode) { this.state.liveControl = { mode, note: mode }; this.render(); this.pushLive(); },
+  setTimedMode() {
+    const time = $("controlTime").value;
+    if (!time) return this.toast("Select a time first.", true);
+    this.state.liveControl = { mode: "time", note: "Scheduled Time", displayTime: time };
+    this.render();
+    this.saveAll(true);
+    this.toast("Time is now visible on the user page.");
+  },
   clearBallTypes() { ["wide", "noball", "bye", "legbye", "wicket"].forEach(id => $(id).checked = false); this.pendingWicket = null; },
   pushUndo() { this.state.undoStack.push(clone(this.state)); if (this.state.undoStack.length > 25) this.state.undoStack.shift(); },
-  async undo() { const prev = this.state.undoStack.pop(); if (!prev) return this.toast("Undo empty", true); this.state = normalizeState(prev); this.render(); await this.saveAll(false); },
+  async undo() { const prev = this.state.undoStack.pop(); if (!prev) return this.toast("Nothing to undo.", true); this.state = normalizeState(prev); this.render(); await this.saveAll(false); },
   commentaryText(ballNo, batter, bowler, label, flags) { if (flags.isWicket) return `${ballNo}: ${bowler} to ${batter}, wicket! ${label}`; if (flags.isWide) return `${ballNo}: wide ball, ${label}`; if (flags.isNo) return `${ballNo}: no ball, ${label}`; return `${ballNo}: ${bowler} to ${batter}, ${label}`; },
 
   bindWicketModal() {
@@ -820,7 +1137,7 @@ window.app = {
   },
   pick(title, list = [], required = false) {
     return new Promise(resolve => {
-      this.pickerResolve = (val) => { if (required && !val) return this.toast("Selection required", true); $("pickerModal").classList.remove("show"); resolve(val); };
+      this.pickerResolve = (val) => { if (required && !val) return this.toast("Selection is required.", true); $("pickerModal").classList.remove("show"); resolve(val); };
       $("pickerTitle").textContent = title;
       $("pickerManual").value = "";
       $("pickerList").innerHTML = list.length ? list.map(x => `<button class="picker-option" data-name="${this.safe(x)}">${this.safe(x)}</button>`).join("") : `<div class="item">No players. Type manually.</div>`;
@@ -831,7 +1148,7 @@ window.app = {
   closePicker(val) { if (this.pickerResolve) this.pickerResolve(val); },
 
   async manualSaveScore() {
-    if (!this.state?.matchId) return this.toast("पहले match start करें", true);
+    if (!this.state?.matchId) return this.toast("Start a match first.", true);
     try {
       this.setSync("Manual Save Score...");
       // Freeze current score as trusted checkpoint. Undo history is cleared intentionally.
@@ -861,7 +1178,7 @@ window.app = {
       this.render();
     } catch (error) {
       console.error(error);
-      this.toast("Save Score failed: " + error.message, true);
+      this.toast("Unable to save score: " + error.message, true);
       this.setSync("Manual Save Failed");
     }
   },
@@ -895,6 +1212,7 @@ window.app = {
     $("fowList").innerHTML = s.fallOfWickets.length ? s.fallOfWickets.map((x, i) => `<div class="item">${i + 1}. ${this.safe(x)}</div>`).join("") : "<div class='item'>No wickets</div>";
     $("commentaryList").innerHTML = s.commentary.length ? s.commentary.slice(0, 30).map(c => `<div class="item"><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div>`).join("") : "<div class='item'>No commentary</div>";
     document.querySelectorAll(".mode").forEach(b => b.classList.toggle("active", b.dataset.mode === s.liveControl.mode));
+    if ($("startSuperOverBtn")) $("startSuperOverBtn").classList.toggle("hidden", !(s.status === "tied" || s.winnerText === "Match Tied"));
     if (s.matchId) {
       $("publicLink").textContent = this.publicLink();
       const qr = $("liveUserQrImg");
@@ -907,28 +1225,270 @@ window.app = {
   renderTeams() {
     $("teamList").innerHTML = this.teams.map(t => `<div class="card-mini" data-id="${t.teamId}"><b>${this.safe(t.name)}</b><br><small>${this.safe(t.shortName || "")} · ${(t.players || []).length} players</small></div>`).join("") || "<div class='item'>No teams</div>";
     document.querySelectorAll("#teamList .card-mini").forEach(el => el.onclick = () => this.selectTeam(el.dataset.id));
+    this.renderAdminTeamProfile();
   },
   selectTeam(id) {
     const t = this.teamById(id); if (!t) return; this.selectedTeamId = id; $("teamId").value = id; $("teamName").value = t.name || ""; $("teamShort").value = t.shortName || ""; $("teamLogo").value = t.logo || ""; $("selectedTeamName").textContent = t.name;
+    this.renderAdminTeamProfile();
     if (this.activeUnsubPlayers) this.activeUnsubPlayers();
-    this.activeUnsubPlayers = listenPlayers(id, players => { t.players = players; this.renderPlayers(players); this.fillTeamSelectors(); }, e => this.toast(e.message, true));
+    this.activeUnsubPlayers = listenPlayers(id, players => { t.players = players; this.renderPlayers(players); this.fillTeamSelectors(); this.renderAdminTeamProfile(); }, e => this.toast(e.message, true));
+  },
+  renderAdminTeamProfile() {
+    const box = $("adminTeamProfile");
+    if (!box) return;
+    const team = this.teamById(this.selectedTeamId);
+    if (!team) return box.innerHTML = "<div class='item'>Select a team to view profile.</div>";
+    const pts = this.teamLeaguePoints(team.name);
+    const logo = team.logo ? `<img src="${this.safe(team.logo)}" alt="">` : this.short(team.name);
+    box.innerHTML = `<div class="admin-team-head"><div class="logo-preview">${logo}</div><div><h3>${this.safe(team.name)}</h3><p>${this.safe(team.shortName || this.short(team.name))}</p></div></div><div class="small-metrics"><div><span>Players</span><b>${(team.players || []).length}</b></div><div><span>Played</span><b>${pts.P || 0}</b></div><div><span>Won</span><b>${pts.W || 0}</b></div><div><span>Points</span><b>${pts.Pts || 0}</b></div></div><div class="admin-team-squad">${(team.players || []).map(p => `<span>${this.safe(p.name)}</span>`).join("") || "<small>No players added</small>"}</div>`;
+  },
+  teamLeaguePoints(teamName) {
+    const league = this.currentLeague();
+    return league?.pointsTable?.[teamName] || this.state.pointsTable?.[teamName] || {};
   },
   renderPlayers(players = []) { $("playerList").innerHTML = players.map(p => `<div class="card-mini" data-id="${p.playerId}"><b>${this.safe(p.name)}</b><br><small>${this.safe(p.role || "Player")}</small></div>`).join("") || "<div class='item'>No players</div>"; document.querySelectorAll("#playerList .card-mini").forEach(el => el.onclick = () => this.selectPlayer(el.dataset.id)); },
   selectPlayer(id) { const team = this.teamById(this.selectedTeamId); const p = (team?.players || []).find(x => x.playerId === id); if (!p) return; this.selectedPlayerId = id; $("playerId").value = id; $("playerName").value = p.name || ""; $("playerRole").value = p.role || "Batsman"; $("battingStyle").value = p.battingStyle || ""; $("bowlingStyle").value = p.bowlingStyle || ""; $("jerseyNo").value = p.jerseyNo || ""; $("playerImage").value = p.image || ""; },
-  async saveTeamForm() { const id = $("teamId").value || undefined; const name = $("teamName").value.trim(); if (!name) return this.toast("Team name required", true); const teamId = await saveTeam({ teamId: id, name, shortName: $("teamShort").value.trim(), logo: $("teamLogo").value.trim() }); this.selectTeam(teamId); this.toast("Team saved"); },
+  async saveTeamForm() { const id = $("teamId").value || undefined; const name = $("teamName").value.trim(); if (!name) return this.toast("Team name is required.", true); const teamId = await saveTeam({ teamId: id, name, shortName: $("teamShort").value.trim(), logo: $("teamLogo").value.trim() }); this.selectTeam(teamId); this.toast("Team saved."); },
   clearTeamForm() { ["teamId", "teamName", "teamShort", "teamLogo"].forEach(id => $(id).value = ""); this.selectedTeamId = ""; },
-  async deleteSelectedTeam() { if (!this.selectedTeamId || !confirm("Delete team?")) return; await deleteTeam(this.selectedTeamId); this.clearTeamForm(); this.toast("Team deleted"); },
-  async savePlayerForm() { if (!this.selectedTeamId) return this.toast("Team select करें", true); const name = $("playerName").value.trim(); if (!name) return this.toast("Player name required", true); await savePlayer(this.selectedTeamId, { playerId: $("playerId").value || undefined, name, role: $("playerRole").value, battingStyle: $("battingStyle").value, bowlingStyle: $("bowlingStyle").value, jerseyNo: $("jerseyNo").value, image: $("playerImage").value.trim() }); this.clearPlayerForm(false); this.toast("Player saved"); },
+  async deleteSelectedTeam() { if (!this.selectedTeamId || !confirm("Delete this team?")) return; await deleteTeam(this.selectedTeamId); this.clearTeamForm(); this.toast("Team deleted."); },
+  async savePlayerForm() { if (!this.selectedTeamId) return this.toast("Select a team first.", true); const name = $("playerName").value.trim(); if (!name) return this.toast("Player name is required.", true); await savePlayer(this.selectedTeamId, { playerId: $("playerId").value || undefined, name, role: $("playerRole").value, battingStyle: $("battingStyle").value, bowlingStyle: $("bowlingStyle").value, jerseyNo: $("jerseyNo").value, image: $("playerImage").value.trim() }); this.clearPlayerForm(false); this.toast("Player saved."); },
   clearPlayerForm(clearId = true) { ["playerId", "playerName", "battingStyle", "bowlingStyle", "jerseyNo", "playerImage"].forEach(id => $(id).value = ""); if (clearId) this.selectedPlayerId = ""; },
-  async deleteSelectedPlayer() { if (!this.selectedTeamId || !this.selectedPlayerId || !confirm("Delete player?")) return; await deletePlayer(this.selectedTeamId, this.selectedPlayerId); this.clearPlayerForm(); this.toast("Player deleted"); },
+  async deleteSelectedPlayer() { if (!this.selectedTeamId || !this.selectedPlayerId || !confirm("Delete this player?")) return; await deletePlayer(this.selectedTeamId, this.selectedPlayerId); this.clearPlayerForm(); this.toast("Player deleted."); },
 
-  async uploadImage(file, targetInput) { if (!file) return; if (!cloudinaryConfig.cloudName || cloudinaryConfig.cloudName.includes("YOUR")) return this.toast("Cloudinary config भरें", true); const fd = new FormData(); fd.append("file", file); fd.append("upload_preset", cloudinaryConfig.uploadPreset); try { const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, { method: "POST", body: fd }); if (!res.ok) throw new Error("Cloudinary upload failed"); const json = await res.json(); $(targetInput).value = json.secure_url || json.url || ""; this.toast("Image uploaded"); } catch (e) { this.toast(e.message, true); } },
+  async uploadImage(file, targetInput) { if (!file) return; if (!cloudinaryConfig.cloudName || cloudinaryConfig.cloudName.includes("YOUR")) return this.toast("Cloudinary configuration is required.", true); const fd = new FormData(); fd.append("file", file); fd.append("upload_preset", cloudinaryConfig.uploadPreset); try { const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, { method: "POST", body: fd }); if (!res.ok) throw new Error("Cloudinary upload failed"); const json = await res.json(); $(targetInput).value = json.secure_url || json.url || ""; this.toast("Image uploaded."); } catch (e) { this.toast(e.message, true); } },
 
-  renderLeagueTeamChecks() { $("leagueTeamChecks").innerHTML = this.teams.map(t => `<label><input type="checkbox" value="${t.teamId}"> ${this.safe(t.name)}</label>`).join("") || "No teams"; },
-  generateSchedule() { const ids = [...document.querySelectorAll("#leagueTeamChecks input:checked")].map(x => x.value); const teams = ids.map(id => this.teamById(id)).filter(Boolean); if (teams.length < 2) return this.toast("At least 2 teams", true); const format = $("leagueFormat").value; const schedule = []; const rounds = format === "double" ? 2 : 1; let n = 1; for (let r = 1; r <= rounds; r++) for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) schedule.push({ id: makeId("fix"), stage: "League", round: `Round ${r}`, teamA: r === 1 ? this.teamObj(teams[i]) : this.teamObj(teams[j]), teamB: r === 1 ? this.teamObj(teams[j]) : this.teamObj(teams[i]), overs: Number($("leagueOvers").value || 20), status: "pending", matchNo: n++ }); if ($("iplPlayoffs").checked) ["Qualifier 1", "Eliminator", "Qualifier 2", "Final"].forEach(stage => schedule.push({ id: makeId("fix"), stage, round: "Playoffs", teamA: { name: "TBA" }, teamB: { name: "TBA" }, overs: Number($("leagueOvers").value || 20), status: "pending", matchNo: n++ })); this.draftSchedule = schedule; this.renderLeagueSchedule(); },
-  async saveLeagueForm() { const selectedTeams = [...document.querySelectorAll("#leagueTeamChecks input:checked")].map(x => this.teamObj(this.teamById(x.value))).filter(Boolean); const league = { leagueId: this.editingLeagueId || undefined, name: $("leagueName").value.trim() || "Cricket League", shortName: $("leagueShort").value.trim(), season: $("leagueSeason").value.trim(), logo: $("leagueLogo").value.trim(), defaultOvers: Number($("leagueOvers").value || 20), format: $("leagueFormat").value, playoffs: $("iplPlayoffs").checked, teams: selectedTeams, schedule: this.draftSchedule || [], pointsTable: {}, status: "active" }; await saveLeague(league); this.toast("League saved"); },
-  clearLeagueForm() { ["leagueName", "leagueShort", "leagueSeason", "leagueLogo"].forEach(id => $(id).value = ""); this.draftSchedule = []; this.renderLeagueSchedule(); },
-  renderLeagueSchedule() { const current = this.draftSchedule || this.leagues[0]?.schedule || []; $("leagueSchedule").innerHTML = current.length ? current.map((m, i) => `<div class="item"><b>${i + 1}. ${this.safe(m.teamA?.name)} vs ${this.safe(m.teamB?.name)}</b><br><small>${this.safe(m.stage)} · ${this.safe(m.round)} · ${m.status}</small></div>`).join("") : "<div class='item'>No schedule</div>"; const pts = this.state.pointsTable || this.leagues[0]?.pointsTable || {}; $("leaguePoints").innerHTML = Object.entries(pts).map(([team, p]) => `<tr><td>${this.safe(team)}</td><td>${p.P || 0}</td><td>${p.W || 0}</td><td>${p.L || 0}</td><td>${p.T || 0}</td><td>${p.Pts || 0}</td><td>${this.nrr(p)}</td></tr>`).join("") || `<tr><td colspan="7">No points</td></tr>`; },
+  renderLeagueTeamChecks() { const source = this.editingLeagueId ? this.leagues.find(l => l.leagueId === this.editingLeagueId) : null; const selected = new Set((source?.teams || []).map(t => t.teamId).filter(Boolean)); $("leagueTeamChecks").innerHTML = this.teams.map(t => `<label><input type="checkbox" value="${t.teamId}" ${selected.has(t.teamId) ? "checked" : ""}> ${this.safe(t.name)}</label>`).join("") || "No teams"; },
+  includeEliminatorOn() { const el = $("includeEliminator"); return el?.type === "checkbox" ? el.checked : el?.value !== "off"; },
+  currentLeague() { return (this.editingLeagueId && this.leagues.find(l => l.leagueId === this.editingLeagueId)) || this.state.league || this.leagues.find(l => l.leagueId === $("setupLeague")?.value) || this.leagues[0] || null; },
+  currentSchedule() { return this.draftSchedule || this.currentLeague()?.schedule || []; },
+  teamOptions(selected = "") { return `<option value="">TBA</option>` + this.teams.map(t => `<option value="${t.teamId}" ${t.teamId === selected ? "selected" : ""}>${this.safe(t.name)}</option>`).join(""); },
+
+  openLeagueEditor(title = "Create League") {
+    $("leagueEditor")?.classList.remove("hidden");
+    if ($("leagueEditorTitle")) $("leagueEditorTitle").textContent = title;
+  },
+
+  newLeagueEditor() {
+    this.editingLeagueId = "";
+    this.editingFixtureIndex = null;
+    this.draftSchedule = [];
+    ["leagueName", "leagueShort", "leagueSeason", "leagueLogo"].forEach(id => $(id).value = "");
+    $("leagueOvers").value = 20;
+    $("leagueFormat").value = "single";
+    $("includeEliminator").value = "on";
+    $("iplPlayoffs").checked = true;
+    document.querySelectorAll("#leagueTeamChecks input").forEach(x => x.checked = false);
+    this.openLeagueEditor("Create League");
+    this.renderLeagueSchedule();
+  },
+
+  loadSelectedLeagueForEdit() {
+    const id = $("leagueManageSelect")?.value || "";
+    const league = this.leagues.find(l => l.leagueId === id);
+    if (!league) return this.toast("Select a league first.", true);
+    this.editingLeagueId = league.leagueId;
+    this.editingFixtureIndex = null;
+    this.draftSchedule = clone(league.schedule || []);
+    $("leagueName").value = league.name || "";
+    $("leagueShort").value = league.shortName || "";
+    $("leagueSeason").value = league.season || "";
+    $("leagueLogo").value = league.logo || "";
+    $("leagueOvers").value = league.defaultOvers || 20;
+    $("leagueFormat").value = league.format || "single";
+    $("includeEliminator").value = league.includeEliminator === false ? "off" : "on";
+    $("iplPlayoffs").checked = league.playoffs !== false;
+    const ids = new Set((league.teams || []).map(t => t.teamId).filter(Boolean));
+    document.querySelectorAll("#leagueTeamChecks input").forEach(x => x.checked = ids.has(x.value));
+    this.openLeagueEditor("Edit League");
+    this.renderLeagueSchedule();
+  },
+
+  async deleteSelectedLeague() {
+    const id = $("leagueManageSelect")?.value || this.editingLeagueId || "";
+    const league = this.leagues.find(l => l.leagueId === id);
+    if (!league) return this.toast("Select a league first.", true);
+    if (!confirm(`Delete league "${league.name}"? Schedule, points table, and league data will be removed.`)) return;
+    await deleteLeague(id);
+    if (this.editingLeagueId === id) this.newLeagueEditor();
+    this.toast("League deleted.");
+  },
+
+  generateSchedule() {
+    const ids = [...document.querySelectorAll("#leagueTeamChecks input:checked")].map(x => x.value);
+    const teams = ids.map(id => this.teamById(id)).filter(Boolean);
+    if (teams.length < 2) return this.toast("Select at least two teams.", true);
+    if (this.currentSchedule().length && !confirm("Generate a new schedule? The current draft schedule will be replaced.")) return;
+    const format = $("leagueFormat").value;
+    const schedule = [];
+    let n = 1;
+
+    if (format === "knockout") {
+      const round = teams.length <= 2 ? "Final" : (teams.length <= 4 ? "Semi Final" : "Knockout");
+      for (let i = 0; i < teams.length; i += 2) {
+        schedule.push({ id: makeId("fix"), stage: i + 1 >= teams.length ? "Bye" : round, round, teamA: this.teamObj(teams[i]), teamB: this.teamObj(teams[i + 1]) || { name: "TBA" }, overs: Number($("leagueOvers").value || 20), venue: "", matchDate: "", matchTime: "", status: "pending", matchNo: n++ });
+      }
+      if (teams.length > 2) schedule.push({ id: makeId("fix"), stage: "Final", round: "Final", teamA: { name: "Winner SF 1" }, teamB: { name: "Winner SF 2" }, overs: Number($("leagueOvers").value || 20), venue: "", matchDate: "", matchTime: "", status: "pending", matchNo: n++ });
+    } else {
+      const rounds = format === "double" ? 2 : 1;
+      for (let r = 1; r <= rounds; r++) for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) {
+        schedule.push({ id: makeId("fix"), stage: "League", round: `Round ${r}`, teamA: r === 1 ? this.teamObj(teams[i]) : this.teamObj(teams[j]), teamB: r === 1 ? this.teamObj(teams[j]) : this.teamObj(teams[i]), overs: Number($("leagueOvers").value || 20), venue: "", matchDate: "", matchTime: "", status: "pending", matchNo: n++ });
+      }
+      if ($("iplPlayoffs").checked) {
+        const stages = this.includeEliminatorOn() ? ["Qualifier 1", "Eliminator", "Qualifier 2", "Final"] : ["Qualifier 1", "Qualifier 2", "Final"];
+        stages.forEach(stage => schedule.push({ id: makeId("fix"), stage, round: "Playoffs", teamA: { name: "TBA" }, teamB: { name: "TBA" }, overs: Number($("leagueOvers").value || 20), venue: "", matchDate: "", matchTime: "", status: "pending", matchNo: n++ }));
+      }
+    }
+    this.draftSchedule = schedule;
+    this.editingFixtureIndex = null;
+    this.renderLeagueSchedule();
+  },
+
+  async saveLeagueForm() {
+    const selectedTeams = [...document.querySelectorAll("#leagueTeamChecks input:checked")].map(x => this.teamObj(this.teamById(x.value))).filter(Boolean);
+    const existing = (this.editingLeagueId && this.leagues.find(l => l.leagueId === this.editingLeagueId)) || (this.state.league?.leagueId ? this.state.league : null);
+    const league = { leagueId: this.editingLeagueId || existing?.leagueId || undefined, name: $("leagueName").value.trim() || existing?.name || "Cricket League", shortName: $("leagueShort").value.trim(), season: $("leagueSeason").value.trim(), logo: $("leagueLogo").value.trim(), defaultOvers: Number($("leagueOvers").value || 20), format: $("leagueFormat").value, playoffs: $("iplPlayoffs").checked, includeEliminator: this.includeEliminatorOn(), teams: selectedTeams.length ? selectedTeams : (existing?.teams || []), schedule: this.draftSchedule || existing?.schedule || [], pointsTable: existing?.pointsTable || this.state.pointsTable || {}, pointsAppliedMatchIds: existing?.pointsAppliedMatchIds || this.state.league?.pointsAppliedMatchIds || {}, status: "active" };
+    await saveLeague(league);
+    this.state.league = league;
+    this.draftSchedule = league.schedule;
+    if (this.state.matchId && this.state.leagueId === league.leagueId && !this.state.matchFinished) {
+      this.state.pointsTable = league.pointsTable || this.state.pointsTable || {};
+      await this.saveAll(true);
+    }
+    this.toast("League saved.");
+    this.renderLeagueSchedule();
+  },
+
+  clearLeagueForm() {
+    const hasData = this.currentSchedule().length || ["leagueName", "leagueShort", "leagueSeason", "leagueLogo"].some(id => $(id).value.trim());
+    if (hasData && !confirm("Clear the draft form? The saved Firebase league will not change until you save.")) return;
+    ["leagueName", "leagueShort", "leagueSeason", "leagueLogo"].forEach(id => $(id).value = "");
+    this.editingLeagueId = "";
+    this.editingFixtureIndex = null;
+    this.draftSchedule = [];
+    this.renderLeagueSchedule();
+  },
+
+  editFixture(index) {
+    this.editingFixtureIndex = index;
+    this.renderLeagueSchedule();
+  },
+
+  cancelFixtureEdit() {
+    this.editingFixtureIndex = null;
+    this.renderLeagueSchedule();
+  },
+
+  updateFixture(index, field, value) {
+    const schedule = this.currentSchedule();
+    const fixture = schedule[index];
+    if (!fixture) return;
+    if (field === "teamA" || field === "teamB") fixture[field] = this.teamObj(this.teamById(value)) || { name: "TBA" };
+    else if (field === "overs" || field === "matchNo") fixture[field] = Number(value || 0);
+    else fixture[field] = value;
+    this.draftSchedule = schedule;
+    this.renderLeagueSchedule();
+  },
+
+  async saveFixture(index) {
+    const schedule = this.currentSchedule();
+    const fixture = schedule[index];
+    if (!fixture) return;
+    this.draftSchedule = schedule;
+    const league = this.editingLeagueId ? this.leagues.find(l => l.leagueId === this.editingLeagueId) : this.state.league;
+    if (!league?.leagueId) {
+      this.toast("Fixture draft saved. Use Save League to publish changes.");
+      this.editingFixtureIndex = null;
+      this.renderLeagueSchedule();
+      return;
+    }
+    const updated = { ...league, schedule: this.draftSchedule };
+    if (String(fixture.status || "").toLowerCase() === "no-result") this.applyNoResultFixture(updated, fixture);
+    await saveLeague(updated);
+    if (this.state.league?.leagueId === updated.leagueId) this.state.league = updated;
+    if (this.state.matchId && this.state.leagueId === updated.leagueId && !this.state.matchFinished) await this.saveAll(true);
+    this.editingFixtureIndex = null;
+    this.toast("Fixture saved.");
+    this.renderLeagueSchedule();
+  },
+
+  applyNoResultFixture(league, fixture) {
+    const key = fixture.matchId || fixture.id || `fixture_${fixture.matchNo || ""}`;
+    const applied = league.pointsAppliedMatchIds || {};
+    if (!key || applied[key]) return;
+    const a = fixture.teamA?.name || "";
+    const b = fixture.teamB?.name || "";
+    if (!a || !b || a === "TBA" || b === "TBA") return;
+    const impact = {
+      matchId: key,
+      status: "no-result",
+      teams: {
+        [a]: { P: 1, W: 0, L: 0, T: 0, NR: 1, Pts: 1, RF: 0, BF: 0, RA: 0, BA: 0 },
+        [b]: { P: 1, W: 0, L: 0, T: 0, NR: 1, Pts: 1, RF: 0, BF: 0, RA: 0, BA: 0 }
+      }
+    };
+    this.applyPointsImpact(league, impact, 1);
+    league.pointsAppliedMatchIds = { ...applied, [key]: true };
+    fixture.pointsImpact = impact;
+    fixture.result = "No Result";
+  },
+
+  useFixtureSetup(index) {
+    const fixture = this.currentSchedule()[index];
+    if (!fixture) return;
+    const a = fixture.teamA?.teamId, b = fixture.teamB?.teamId;
+    if (!a || !b) return this.toast("Select both fixture teams before loading setup.", true);
+    const league = this.currentLeague();
+    if (league?.leagueId) $("setupLeague").value = league.leagueId;
+    $("teamASelect").value = a;
+    $("teamBSelect").value = b;
+    $("totalOvers").value = fixture.overs || $("leagueOvers").value || 20;
+    $("venue").value = fixture.venue || "";
+    $("matchDate").value = fixture.matchDate || "";
+    $("matchTime").value = fixture.matchTime || "";
+    $("matchType").value = fixture.stage || league?.shortName || "T20";
+    this.pendingFixture = { id: fixture.id, index, stage: fixture.stage || "", round: fixture.round || "", matchNo: fixture.matchNo || "" };
+    this.refreshSetupPlayers();
+    this.openPage("setup");
+    this.toast("Fixture loaded into match setup.");
+  },
+
+  autoFillPlayoffs() {
+    const schedule = this.currentSchedule();
+    const pts = this.state.pointsTable || this.currentLeague()?.pointsTable || {};
+    const ranked = Object.entries(pts).sort((a, b) => (Number(b[1].Pts || 0) - Number(a[1].Pts || 0)) || (Number(this.nrr(b[1])) - Number(this.nrr(a[1])))).map(([name]) => this.teams.find(t => t.name === name) || { name });
+    if (ranked.length < 2) return this.toast("Not enough ranked teams in the points table.", true);
+    const setStage = (stage, teamA, teamB) => {
+      const row = schedule.find(m => String(m.stage || "").toLowerCase() === stage.toLowerCase());
+      if (row) { row.teamA = this.teamObj(teamA) || teamA || { name: "TBA" }; row.teamB = this.teamObj(teamB) || teamB || { name: "TBA" }; }
+    };
+    setStage("Qualifier 1", ranked[0], ranked[1]);
+    setStage("Eliminator", ranked[2], ranked[3]);
+    setStage("Qualifier 2", { name: "Loser Qualifier 1" }, { name: this.includeEliminatorOn() ? "Winner Eliminator" : "Rank 3" });
+    setStage("Final", { name: "Winner Qualifier 1" }, { name: "Winner Qualifier 2" });
+    this.draftSchedule = schedule;
+    this.renderLeagueSchedule();
+    this.toast("Playoff fixtures auto-filled.");
+  },
+
+  renderLeagueSchedule() {
+    const current = this.currentSchedule();
+    const pts = this.state.pointsTable || this.currentLeague()?.pointsTable || {};
+    const done = current.filter(x => ["completed", "done"].includes(String(x.status || "").toLowerCase())).length;
+    const pending = current.length - done;
+    const next = current.find(x => !["completed", "done"].includes(String(x.status || "").toLowerCase()));
+    if ($("leagueDashboard")) $("leagueDashboard").innerHTML = `<div><span>Matches</span><b>${current.length}</b></div><div><span>Completed</span><b>${done}</b></div><div><span>Pending</span><b>${pending}</b></div><div><span>Next</span><b>${this.safe(next ? `${next.teamA?.name || "TBA"} vs ${next.teamB?.name || "TBA"}` : "-")}</b></div>`;
+    $("leagueSchedule").innerHTML = current.length ? current.map((m, i) => {
+      const result = m.result || m.winnerText || "";
+      const score = [m.firstInnings, m.secondInnings].filter(Boolean).join(" | ");
+      const disabled = ["completed", "done"].includes(String(m.status || "").toLowerCase()) ? "disabled" : "";
+      const isEditing = this.editingFixtureIndex === i;
+      const when = [m.matchDate, m.matchTime].filter(Boolean).join(" ");
+      const summary = [this.safe(m.stage || "League"), this.safe(m.round || ""), when ? this.safe(when) : "", m.venue ? this.safe(m.venue) : "", `Overs ${Number(m.overs || 20)}`].filter(Boolean).join(" | ");
+      const controls = isEditing ? `<div class="grid3"><div><label>Team A</label><select onchange="app.updateFixture(${i}, 'teamA', this.value)" ${disabled}>${this.teamOptions(m.teamA?.teamId || "")}</select></div><div><label>Team B</label><select onchange="app.updateFixture(${i}, 'teamB', this.value)" ${disabled}>${this.teamOptions(m.teamB?.teamId || "")}</select></div><div><label>Status</label><select onchange="app.updateFixture(${i}, 'status', this.value)"><option value="pending" ${String(m.status || "pending") === "pending" ? "selected" : ""}>Pending</option><option value="live" ${m.status === "live" ? "selected" : ""}>Live</option><option value="completed" ${m.status === "completed" ? "selected" : ""}>Completed</option><option value="cancelled" ${m.status === "cancelled" ? "selected" : ""}>Cancelled</option><option value="no-result" ${m.status === "no-result" ? "selected" : ""}>No Result</option></select></div></div><div class="grid3"><div><label>Stage</label><input value="${this.safe(m.stage || "")}" onchange="app.updateFixture(${i}, 'stage', this.value)" ${disabled}></div><div><label>Date</label><input type="date" value="${this.safe(m.matchDate || "")}" onchange="app.updateFixture(${i}, 'matchDate', this.value)" ${disabled}></div><div><label>Time</label><input type="time" value="${this.safe(m.matchTime || "")}" onchange="app.updateFixture(${i}, 'matchTime', this.value)" ${disabled}></div></div><div class="grid2"><div><label>Overs</label><input type="number" min="1" value="${Number(m.overs || 20)}" onchange="app.updateFixture(${i}, 'overs', this.value)" ${disabled}></div><div><label>Match No</label><input type="number" min="1" value="${Number(m.matchNo || i + 1)}" onchange="app.updateFixture(${i}, 'matchNo', this.value)" ${disabled}></div></div><label>Venue</label><input value="${this.safe(m.venue || "")}" onchange="app.updateFixture(${i}, 'venue', this.value)" ${disabled}><div class="actions"><button class="btn primary" onclick="app.saveFixture(${i})">Save Fixture</button><button class="btn light" onclick="app.cancelFixtureEdit()">Close</button><button class="btn" onclick="app.useFixtureSetup(${i})" ${disabled}>Use Setup</button></div>` : `<small>${summary}${result ? " | " + this.safe(result) : ""}${score ? " | " + this.safe(score) : ""}</small><div class="actions"><button class="btn" onclick="app.editFixture(${i})">Edit</button><button class="btn primary" onclick="app.useFixtureSetup(${i})" ${disabled}>Use Setup</button></div>`;
+      return `<div class="item fixture-row"><div class="fixture-head"><b>${Number(m.matchNo || i + 1)}. ${this.safe(m.teamA?.name || m.teamA || "TBA")} vs ${this.safe(m.teamB?.name || m.teamB || "TBA")}</b><span>${this.safe(m.status || "pending")}</span></div>${controls}</div>`;
+    }).join("") : "<div class='item'>No schedule</div>";
+    $("leaguePoints").innerHTML = Object.entries(pts).map(([team, p]) => `<tr><td>${this.safe(team)}</td><td>${p.P || 0}</td><td>${p.W || 0}</td><td>${p.L || 0}</td><td>${p.T || 0}</td><td>${p.NR || 0}</td><td>${p.Pts || 0}</td><td>${this.nrr(p)}</td></tr>`).join("") || `<tr><td colspan="8">No points</td></tr>`;
+  },
   nrr(p) { const rf = p.BF ? p.RF / (p.BF / 6) : 0; const ra = p.BA ? p.RA / (p.BA / 6) : 0; return (rf - ra).toFixed(3); },
 
   renderHistory() {
@@ -940,7 +1500,7 @@ window.app = {
 
   async editManOfMatch(matchId) {
     const match = this.completed.find(m => m.matchId === matchId);
-    if (!match) return this.toast("Match not found", true);
+    if (!match) return this.toast("Match not found.", true);
     let scorecard = match.fullScorecardData || match.scorecard || {};
     const players = new Set();
     const addPlayers = (items = []) => {
@@ -989,28 +1549,62 @@ window.app = {
       return;
     }
     updateCompletedMatchMvp(matchId, playerName).then(() => {
-      this.toast("Man of the Match updated to " + playerName);
+      this.toast("Player of the Match updated to " + playerName + ".");
       this.completed = this.completed.map(m => m.matchId === matchId ? { ...m, playerOfMatch: playerName, mvp: playerName } : m);
       this.renderHistory();
       this.closeMvpModal();
-    }).catch(e => this.toast("Failed to update: " + e.message, true));
+    }).catch(e => this.toast("Unable to update: " + e.message, true));
   },
 
   async deleteHistoryMatch(matchId) {
+    const match = this.completed.find(m => m.matchId === matchId);
     const enteredId = prompt(`Delete match ${matchId}?
-Type the match ID to confirm deletion:`);
+Type the match ID to confirm permanent deletion:`);
     if (enteredId === null) return;
     if (enteredId.trim() !== matchId) {
-      this.toast("Match ID mismatch. Delete canceled.", true);
+      this.toast("Match ID mismatch. Deletion cancelled.", true);
       return;
     }
     try {
+      await this.rollbackLeagueForDeletedMatch(match || { matchId });
       await deleteCompletedMatch(matchId);
-      this.toast("Match deleted successfully");
+      this.toast("Match deleted successfully.");
       this.completed = this.completed.filter(m => m.matchId !== matchId);
       this.renderHistory();
     } catch (e) {
-      this.toast("Delete failed: " + e.message, true);
+      this.toast("Unable to delete match: " + e.message, true);
+    }
+  },
+
+  async rollbackLeagueForDeletedMatch(match) {
+    const matchId = match?.matchId || "";
+    if (!matchId) return;
+    const league = this.leagues.find(l => l.leagueId === match.leagueId)
+      || this.leagues.find(l => (l.schedule || []).some(f => f.matchId === matchId));
+    if (!league?.leagueId) return;
+    const schedule = Array.isArray(league.schedule) ? clone(league.schedule) : [];
+    const fixture = schedule.find(f => f.matchId === matchId);
+    const impact = fixture?.pointsImpact || match.pointsImpact || null;
+    const updated = { ...league, schedule };
+    if (impact) this.applyPointsImpact(updated, impact, -1);
+    if (updated.pointsAppliedMatchIds?.[matchId]) {
+      updated.pointsAppliedMatchIds = { ...updated.pointsAppliedMatchIds };
+      delete updated.pointsAppliedMatchIds[matchId];
+    }
+    if (fixture) {
+      fixture.status = "pending";
+      delete fixture.matchId;
+      delete fixture.winnerText;
+      delete fixture.result;
+      delete fixture.firstInnings;
+      delete fixture.secondInnings;
+      delete fixture.completedAt;
+      delete fixture.pointsImpact;
+    }
+    await saveLeague(updated);
+    if (this.state.league?.leagueId === updated.leagueId) {
+      this.state.league = updated;
+      this.state.pointsTable = updated.pointsTable || {};
     }
   },
 

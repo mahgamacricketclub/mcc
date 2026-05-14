@@ -123,6 +123,7 @@ export function livePayload(state, matchId, updatedBy = "") {
     pointsTable: s.pointsTable || {},
     league: s.league || null,
     winnerText: s.winnerText || "",
+    superOver: s.superOver || null,
     mvp: s.mvp || "",
     playerOfMatch: s.playerOfMatch || s.mvp || "",
     followLink: s.followLink || "",

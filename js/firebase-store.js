@@ -18,7 +18,9 @@ import {
   limit,
   serverTimestamp,
   deleteDoc,
-  updateDoc
+  updateDoc,
+  where,
+  writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 import { firebaseConfig } from "../firebase/firebase-config.js";
 
@@ -53,7 +55,11 @@ export async function saveTeam(team) {
 }
 
 export async function deleteTeam(teamId) {
-  await deleteDoc(doc(firestoreDb, "teams", teamId));
+  const playersSnap = await getDocs(collection(firestoreDb, "teams", teamId, "players"));
+  const batch = writeBatch(firestoreDb);
+  playersSnap.docs.forEach(playerDoc => batch.delete(playerDoc.ref));
+  batch.delete(doc(firestoreDb, "teams", teamId));
+  await batch.commit();
 }
 
 export function listenTeams(callback, onError) {
@@ -84,6 +90,7 @@ export async function savePlayer(teamId, player) {
 
 export async function deletePlayer(teamId, playerId) {
   await deleteDoc(doc(firestoreDb, "teams", teamId, "players", playerId));
+  await setDoc(doc(firestoreDb, "teams", teamId), { updatedAt: serverTimestamp() }, { merge: true });
 }
 
 export function listenPlayers(teamId, callback, onError) {
@@ -152,11 +159,13 @@ export async function updateCompletedMatchMvp(matchId, mvp) {
 }
 
 export async function deleteCompletedMatch(matchId) {
-  await Promise.all([
-    deleteDoc(doc(firestoreDb, "matches", matchId)),
-    deleteDoc(doc(firestoreDb, "completedMatches", matchId)),
-    deleteDoc(doc(firestoreDb, "scorecards", matchId))
-  ]);
+  const statsSnap = await getDocs(query(collection(firestoreDb, "playerMatchStats"), where("matchId", "==", matchId)));
+  const batch = writeBatch(firestoreDb);
+  statsSnap.docs.forEach(statDoc => batch.delete(statDoc.ref));
+  batch.delete(doc(firestoreDb, "matches", matchId));
+  batch.delete(doc(firestoreDb, "completedMatches", matchId));
+  batch.delete(doc(firestoreDb, "scorecards", matchId));
+  await batch.commit();
 }
 
 export async function getStoredScorecard(matchId) {
@@ -199,6 +208,14 @@ export async function savePlayerMatchStats(matchId, players) {
     writes.push(setDoc(doc(firestoreDb, "playerMatchStats", `${matchId}_${playerId}`), { ...stat, matchId, playerId, updatedAt: serverTimestamp() }, { merge: true }));
   });
   await Promise.all(writes);
+}
+
+export async function getPlayerCareerStats({ playerId = "", playerName = "" } = {}) {
+  const field = playerId ? "playerId" : "playerName";
+  const value = playerId || playerName;
+  if (!value) return [];
+  const snap = await getDocs(query(collection(firestoreDb, "playerMatchStats"), where(field, "==", value), limit(200)));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 export async function saveSavedLink(link) {

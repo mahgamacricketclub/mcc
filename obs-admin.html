@@ -44,10 +44,26 @@
   .tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
   .tabs button.active{background:var(--accent);color:#042018}
   .tabpage{display:none}.tabpage.active{display:block}
+  .hidden{display:none!important}
+  .login-screen{min-height:100%;display:grid;place-items:center;padding:18px}
+  .login-card{width:min(420px,100%);background:rgba(17,24,39,.96);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 16px 42px rgba(0,0,0,.3)}
+  .message{font-size:13px;color:#fecaca;margin-top:8px;min-height:18px}
   @media(max-width:980px){body{overflow:auto}.wrap{grid-template-columns:1fr;overflow:visible}.preview-shell{position:static}aside.panel{overflow:visible}header{align-items:flex-start;flex-direction:column}.scene-grid,.hot-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <h1>OBS Admin Login</h1>
+    <p class="hint">Sign in with an authorized admin account.</p>
+    <label>Email</label><input id="loginEmail" type="email" placeholder="admin@example.com">
+    <label>Password</label><input id="loginPassword" type="password" placeholder="Password">
+    <div class="actions" style="margin-top:10px"><button id="loginBtn" class="primary">Login</button></div>
+    <div id="loginMessage" class="message"></div>
+  </div>
+</div>
+
+<div id="adminApp" class="hidden">
 <header>
   <div><h1>OBS Cricket Overlay Admin</h1><div class="hint">OBS Browser Source: Width <b>1280</b>, Height <b>720</b>. Coordinates are always saved in 1280x720.</div></div>
   <div class="row" style="max-width:760px;width:100%">
@@ -56,6 +72,7 @@
     <button id="loadBtn">Load</button>
     <button id="lockMatchBtn" class="light">Lock ID</button>
     <button id="pushLiveBtn" class="primary">Push Live</button>
+    <button id="logoutBtn" class="light">Logout</button>
   </div>
 </header>
 
@@ -108,7 +125,7 @@
       <label><input id="autoScenes" type="checkbox"> Auto scene toggle</label>
       <h3>Position Editor</h3>
       <div class="actions"><button id="resetPositions" class="warn">Reset Positions</button><button id="saveLocal">Save Local</button><button id="clearLocal" class="danger">Clear Local</button></div>
-      <p class="hint">Preview me card drag/resize karo. Push Live par positions Firebase me save ho jayengi.</p>
+      <p class="hint">Preview me card click karke select karo. Arrow keys se 1px move, Shift+Arrow se 10px move, Ctrl+Arrow se resize. Push Live par positions Firebase me save ho jayengi.</p>
     </section>
 
     <section id="links" class="tabpage">
@@ -128,10 +145,13 @@
   </main>
 </div>
 <div id="toast" class="toast"></div>
+</div>
 
 <script type="module">
 import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getDatabase, ref, onValue, update, get, query, orderByChild, limitToLast, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyBgqY7cQmXBUlIGQPw50NEAd6lhcAjvs_I",
@@ -145,6 +165,8 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const auth = getAuth(app);
+const fsdb = getFirestore(app);
 const $ = id => document.getElementById(id);
 const cardThemes = ["matchboard","inningsboard","chaseboard","resultboard","scorestrip","tournamenttable","playerstatsboard","battingcard","bowlingcard","partnershipboard","fallwicketsboard","overbyoverboard","squadboard","tossboard","nextmatchboard","scorebug","lower","topbar","vertical","minimal","commentary","wicket","target","broadcast","player","partnership","rate","slate","sponsor","ticker","squad","neon","powerplay","fow","lastwicket","bowling","winprob","oversummary","nextbatter","summary","rrmeter","moment","toss","playingxi","battercomp","bowlercomp","timeline","result","venue","inningsbreak","milestone","review"];
 const sceneMap = {
@@ -176,10 +198,70 @@ const sceneMap = {
   "Next Match":["nextmatchboard"]
 };
 const hotTypes = ["FOUR","SIX","WICKET","50","100","REVIEW","POWERPLAY","TIMEOUT","DRINKS","TARGET","BATTER","PARTNERSHIP"];
-const state = { matchId:"liveMatch1", selected:new Set(["scorebug","ticker","sponsor"]), positions:{}, edit:true, unsub:null, control:{} };
+const state = { matchId:"liveMatch1", selected:new Set(["scorebug","ticker","sponsor"]), selectedCard:"", positions:{}, edit:true, unsub:null, control:{} };
 const LOCKED_MATCH_KEY = "obs_admin_locked_match_id";
 
+function bindAuth(){
+  $("loginBtn").onclick = login;
+  $("loginPassword").addEventListener("keydown", e => { if (e.key === "Enter") login(); });
+  $("logoutBtn").onclick = () => signOut(auth);
+  onAuthStateChanged(auth, async user => {
+    if (!user) return showLogin();
+    try {
+      const ok = await isAdmin(user.uid);
+      if (!ok) {
+        $("loginMessage").textContent = "This account does not have admin access.";
+        await signOut(auth);
+        return showLogin();
+      }
+      showAdmin();
+      init();
+    } catch (e) {
+      $("loginMessage").textContent = e.message || String(e);
+      await signOut(auth).catch(() => {});
+      showLogin();
+    }
+  });
+}
+
+async function login(){
+  $("loginMessage").textContent = "";
+  try {
+    await signInWithEmailAndPassword(auth, $("loginEmail").value.trim(), $("loginPassword").value);
+  } catch (e) {
+    $("loginMessage").textContent = "Sign-in failed: " + (e.code || e.message);
+  }
+}
+
+async function isAdmin(uid){
+  if (!uid) return false;
+  const snap = await getDoc(doc(fsdb, "admins", uid));
+  const data = snap.exists() ? snap.data() : null;
+  return !!(data && data.active === true && data.role === "admin");
+}
+
+function showLogin(){
+  $("loginScreen").classList.remove("hidden");
+  $("adminApp").classList.add("hidden");
+  if (state.unsub) {
+    state.unsub();
+    state.unsub = null;
+  }
+}
+
+function showAdmin(){
+  $("loginScreen").classList.add("hidden");
+  $("adminApp").classList.remove("hidden");
+}
+
 function init(){
+  if (state.initialized) {
+    fetchLiveMatches();
+    loadMatch();
+    refreshPreview();
+    return;
+  }
+  state.initialized = true;
   buildCards(); buildScenes(); buildHot(); bind();
   applyLockedMatch();
   loadLocal();
@@ -205,9 +287,9 @@ function bind(){
   $("clearAllCards").onclick = clearAllCards;
   $("refreshPreview").onclick = refreshPreview;
   $("toggleEdit").onclick = () => { state.edit = !state.edit; $("toggleEdit").textContent = state.edit ? "Edit Mode On" : "Edit Mode Off"; refreshPreview(); };
-  $("resetPositions").onclick = () => { state.positions = {}; refreshPreview(); toast("Positions reset. Push Live to save reset."); };
+  $("resetPositions").onclick = () => { state.positions = {}; refreshPreview(); toast("Positions reset. Push Live to apply changes."); };
   $("saveLocal").onclick = saveLocal;
-  $("clearLocal").onclick = () => { localStorage.removeItem(localKey()); toast("Local settings cleared"); };
+  $("clearLocal").onclick = () => { localStorage.removeItem(localKey()); toast("Local settings cleared."); };
   $("openOverlay").onclick = () => window.open(mainUrl(false), "_blank");
   $("matchId").addEventListener("change", loadMatch);
   $("matchSelect").addEventListener("change", () => {
@@ -239,9 +321,33 @@ function bind(){
       state.positions = cleanPositions(e.data.positions || {});
       saveLocal(false);
     }
+    if (e.data?.type === "obs-selected-card") {
+      state.selectedCard = e.data.cardId || "";
+      if (state.selectedCard) toast(`Selected: ${state.selectedCard}`);
+    }
   });
+  window.addEventListener("keydown", handleKeyboardNudge);
   window.addEventListener("resize", scalePreview);
   ["sponsor","eventName","accent","opacity","zIndex","animation","poll","debug","autoTriggers","autoScenes","hotDuration"].forEach(id => $(id).addEventListener("input", () => { refreshPreview(); renderLinks(); }));
+}
+
+function handleKeyboardNudge(e){
+  if (!state.edit || !state.selectedCard || !/^Arrow/.test(e.key)) return;
+  const tag = document.activeElement?.tagName?.toLowerCase();
+  if (["input", "select", "textarea", "button"].includes(tag)) return;
+  e.preventDefault();
+  const step = e.shiftKey ? 10 : 1;
+  const dx = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  const dy = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+  $("preview").contentWindow?.postMessage({
+    type:"obs-nudge-card",
+    matchId:state.matchId,
+    cardId:state.selectedCard,
+    dx,
+    dy,
+    step,
+    resize:e.ctrlKey || e.metaKey
+  }, "*");
 }
 
 function applyLockedMatch(){
@@ -264,16 +370,16 @@ function toggleMatchLock(){
   if (locked) {
     localStorage.removeItem(LOCKED_MATCH_KEY);
     setMatchLockUi(false);
-    toast("Match ID unlocked");
+    toast("Match ID unlocked.");
     return;
   }
   const id = $("matchId").value.trim();
-  if (!id) return toast("Match ID required");
+  if (!id) return toast("Match ID is required.");
   localStorage.setItem(LOCKED_MATCH_KEY, id);
   state.matchId = id;
   setMatchLockUi(true);
   loadMatch();
-  toast("Match ID locked");
+  toast("Match ID locked.");
 }
 
 function openTab(id){
@@ -302,10 +408,10 @@ async function fetchLiveMatches(showToast = false){
     snap.forEach(child => rows.push({ matchId: child.key, ...(child.val() || {}) }));
     rows.sort((a,b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
     renderMatchOptions(rows);
-    if (showToast) toast("Live match list refreshed");
+    if (showToast) toast("Live match list refreshed.");
   } catch (error) {
     console.warn(error);
-    if (showToast) toast("Live matches fetch failed");
+    if (showToast) toast("Unable to load live matches.");
   }
 }
 
@@ -338,13 +444,13 @@ function hydrate(c){
 }
 
 function syncChecks(){ cardThemes.forEach(t => { const el=$(`show_${t}`); if (el) el.checked = state.selected.has(t); }); renderLinks(); }
-function applyScene(name){ state.selected = new Set(sceneMap[name] || []); syncChecks(); refreshPreview(); toast(`${name} scene selected`); }
+function applyScene(name){ state.selected = new Set(sceneMap[name] || []); syncChecks(); refreshPreview(); toast(`${name} scene selected.`); }
 
 function clearAllCards(){
   state.selected = new Set();
   syncChecks();
   refreshPreview();
-  toast("All cards cleared. Push Live to apply.");
+  toast("All cards cleared. Push Live to apply changes.");
 }
 function triggerHot(type, push=true){
   const detail = type === "FOUR" || type === "SIX" ? "Boundary!" : type === "WICKET" ? "Big breakthrough" : type;
@@ -355,7 +461,7 @@ function triggerHot(type, push=true){
   if (push) {
     update(ref(db, `obsControl/${state.matchId}`), patch)
       .then(() => {
-        toast(`${type} pushed`);
+        toast(`${type} pushed live.`);
         setTimeout(() => {
           update(ref(db, `obsControl/${state.matchId}`), { hot:false, updatedAt:serverTimestamp() }).catch(console.warn);
         }, hotDuration + 250);
@@ -418,7 +524,7 @@ async function pushLive(){
   const data = collect();
   await update(ref(db, `obsControl/${state.matchId}`), data);
   saveLocal(false);
-  toast("OBS control pushed live");
+  toast("OBS controls pushed live.");
 }
 
 function refreshPreview(){
@@ -468,7 +574,7 @@ function renderLinks(){
 }
 
 function localKey(){ return `obs_admin_${state.matchId}`; }
-function saveLocal(show=true){ localStorage.setItem(localKey(), JSON.stringify({ selected:[...state.selected], positions:cleanPositions(state.positions), values:collectForLocal() })); if(show) toast("Saved locally"); }
+function saveLocal(show=true){ localStorage.setItem(localKey(), JSON.stringify({ selected:[...state.selected], positions:cleanPositions(state.positions), values:collectForLocal() })); if(show) toast("Settings saved locally."); }
 function collectForLocal(){
   const ids=["sponsor","eventName","accent","opacity","zIndex","animation","poll","debug","autoTriggers","autoScenes","hotDuration","manualStatus","manualTicker","manualCommentary","manualSummary","manualLastWicket","manualNextBatter","manualMomentPlayer","manualMomentDetail","manualPowerplayRuns","manualPowerplayWickets","manualPowerplayOvers","manualWinProbability"];
   const out={}; ids.forEach(id=>out[id]=$(id).type==="checkbox"?$(id).checked:$(id).value); return out;
@@ -482,12 +588,12 @@ function loadLocal(){
     syncChecks();
   } catch {}
 }
-function copyText(text){ navigator.clipboard?.writeText(text).then(()=>toast("Copied")); }
+function copyText(text){ navigator.clipboard?.writeText(text).then(()=>toast("Copied to clipboard.")); }
 function toast(msg){ const t=$("toast"); t.textContent=msg; t.classList.add("show"); clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>t.classList.remove("show"),2200); }
 function escapeHtml(v){ return String(v ?? "").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])); }
 function escapeAttr(v){ return escapeHtml(v).replace(/`/g,""); }
 
-init();
+bindAuth();
 </script>
 </body>
 </html>

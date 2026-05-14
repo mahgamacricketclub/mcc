@@ -73,6 +73,7 @@
   }
   .debug.show{display:block}
   .edit-outline{outline:2px dashed rgba(56,189,248,.85);cursor:move}
+  .edit-outline.selected{outline:3px solid #facc15;box-shadow:0 0 0 4px rgba(250,204,21,.22)}
   .resize-handle{position:absolute;right:0;bottom:0;width:20px;height:20px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 50%,rgba(56,189,248,.9) 50%)}
 
   #scorebug{left:34px;bottom:34px;width:540px;height:112px;border-radius:20px}
@@ -527,6 +528,7 @@ function render(){
     const show = c.themes.includes(theme);
     el.classList.toggle("show", show);
     el.classList.toggle("edit-outline", show && c.edit);
+    el.classList.toggle("selected", show && c.edit && el.id === state.selectedEditId);
     if (show && !state.lastRenderThemes.includes(theme)) {
       el.classList.remove("slide-in","fade-in","zoom-in");
       void el.offsetWidth;
@@ -843,11 +845,14 @@ function setupEdit(enabled){
     }
     el.addEventListener("pointerdown", startDrag);
   });
+  window.addEventListener("message", handleEditMessage);
+  window.addEventListener("keydown", handleEditKeydown);
 }
 
 function startDrag(e){
   const el = e.currentTarget;
   if (!el.classList.contains("show")) return;
+  selectEditCard(el);
   const resizing = e.target.classList.contains("resize-handle");
   e.preventDefault();
   el.setPointerCapture(e.pointerId);
@@ -874,6 +879,54 @@ function startDrag(e){
   el.addEventListener("pointerup", up);
 }
 
+function selectEditCard(el){
+  if (!el?.id) return;
+  state.selectedEditId = el.id;
+  cardEls.forEach(card => card.classList.toggle("selected", card.id === el.id));
+  parent?.postMessage?.({ type:"obs-selected-card", matchId:state.matchId, cardId:el.id }, "*");
+}
+
+function handleEditKeydown(e){
+  if (!control().edit || !state.selectedEditId || !/^Arrow/.test(e.key)) return;
+  e.preventDefault();
+  nudgeSelectedCard({
+    dx:e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0,
+    dy:e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0,
+    resize:e.ctrlKey || e.metaKey,
+    step:e.shiftKey ? 10 : 1
+  });
+}
+
+function handleEditMessage(e){
+  if (e.data?.type !== "obs-nudge-card") return;
+  if (e.data.matchId && e.data.matchId !== state.matchId) return;
+  if (e.data.cardId) {
+    const el = document.getElementById(e.data.cardId);
+    if (el) selectEditCard(el);
+  }
+  nudgeSelectedCard(e.data);
+}
+
+function nudgeSelectedCard({ dx = 0, dy = 0, step = 1, resize = false } = {}){
+  const el = document.getElementById(state.selectedEditId || "");
+  if (!el || !el.classList.contains("show")) return;
+  const amount = Math.max(1, Number(step || 1));
+  const moveX = Number(dx || 0) * amount;
+  const moveY = Number(dy || 0) * amount;
+  if (resize) {
+    el.style.width = `${Math.max(70, Math.round(el.offsetWidth + moveX))}px`;
+    el.style.height = `${Math.max(34, Math.round(el.offsetHeight + moveY))}px`;
+  } else {
+    const left = parseFloat(el.style.left) || el.offsetLeft || 0;
+    const top = parseFloat(el.style.top) || el.offsetTop || 0;
+    el.style.left = `${Math.max(0, Math.min(1280 - el.offsetWidth, Math.round(left + moveX)))}px`;
+    el.style.top = `${Math.max(0, Math.min(720 - el.offsetHeight, Math.round(top + moveY)))}px`;
+    el.style.right = "auto";
+    el.style.bottom = "auto";
+  }
+  postPositions();
+}
+
 function collectPositions(){
   const out = {};
   cardEls.filter(el => el.id && el.id !== "hot").forEach(el => {
@@ -891,6 +944,7 @@ function collectPositions(){
 }
 function postPositions(){
   const positions = collectPositions();
+  state.control = { ...(state.control || {}), positions };
   parent?.postMessage?.({ type:"obs-positions", matchId:state.matchId, positions }, "*");
 }
 
