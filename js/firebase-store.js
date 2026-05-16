@@ -127,6 +127,16 @@ export function listenLeagues(callback, onError) {
   }, onError);
 }
 
+export async function savePublicSettings(settings = {}) {
+  await setDoc(doc(firestoreDb, "publicSettings", "display"), { ...settings, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+export function listenPublicSettings(callback, onError) {
+  return onSnapshot(doc(firestoreDb, "publicSettings", "display"), (snap) => {
+    callback(snap.exists() ? snap.data() : {});
+  }, onError);
+}
+
 export async function saveMatch(matchId, payload) {
   await setDoc(doc(firestoreDb, "matches", matchId), { ...payload, matchId, updatedAt: serverTimestamp() }, { merge: true });
 }
@@ -176,6 +186,16 @@ export async function getStoredScorecard(matchId) {
 export function listenCompletedMatches(callback, onError) {
   return onSnapshot(query(collection(firestoreDb, "completedMatches"), orderBy("completedAt", "desc"), limit(50)), (snap) => {
     callback(snap.docs.map(d => ({ matchId: d.id, ...d.data() })));
+  }, onError);
+}
+
+export function listenScheduledMatches(callback, onError) {
+  return onSnapshot(query(collection(firestoreDb, "matches"), orderBy("updatedAt", "desc"), limit(50)), (snap) => {
+    const rows = snap.docs
+      .map(d => ({ matchId: d.id, ...d.data() }))
+      .filter(m => String(m.status || "").toLowerCase() === "scheduled" && m.matchFinished !== true)
+      .slice(0, 25);
+    callback(rows);
   }, onError);
 }
 

@@ -73,6 +73,7 @@ export function livePayload(state, matchId, updatedBy = "") {
     matchTitle: s.matchTitle,
     leagueId: s.leagueId,
     leagueName: s.leagueName,
+    showPublicLeague: (s.showPublicLeague ?? s.league?.showPublicLeague) !== false,
     liveStarted: !!s.liveStarted,
     matchFinished: !!s.matchFinished,
     status: s.status,

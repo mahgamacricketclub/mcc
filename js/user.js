@@ -1,5 +1,5 @@
 import { listenLiveMatch, trackViewer } from "./firebase-live.js";
-import { listenMatch, listenCompletedMatches, getLatestPublicMatch, getPlayerCareerStats } from "./firebase-store.js";
+import { listenMatch, listenCompletedMatches, getLatestPublicMatch, getPlayerCareerStats, listenPublicSettings } from "./firebase-store.js";
 import { mergeMatch, overText, calcSR, calcER, normalizeState } from "./live-sync.js";
 
 const $ = id => document.getElementById(id);
@@ -12,6 +12,7 @@ window.app = {
   store: null,
   state: normalizeState({}),
   completed: [],
+  publicSettings: {},
   scoreTeam: "teamA",
   scheduleFilter: "all",
   unsubs: [],
@@ -32,7 +33,7 @@ window.app = {
     this.showState("Loading Match", "Fetching the latest match data...");
     this.loadBackup();
     if (!MATCH_ID) {
-      this.noMatch("Searching for the latest match...");
+      this.waiting("Searching for the latest match...");
       try {
         const latest = await getLatestPublicMatch();
         if (!latest?.matchId) return this.noMatch("No Records Found");
@@ -55,12 +56,13 @@ window.app = {
     this.unsubs.push(listenLiveMatch(MATCH_ID, live => { this.live = live; this.publish(); }, e => this.noMatch("Unable to load live data. Please try again.")));
     this.unsubs.push(listenMatch(MATCH_ID, store => { this.store = store; this.publish(); }, e => this.noMatch("Unable to load match data. Please try again.")));
     this.unsubs.push(listenCompletedMatches(rows => { this.completed = rows; this.renderMatches(); }, () => {}));
+    this.unsubs.push(listenPublicSettings(settings => { this.publicSettings = settings || {}; this.render(); }, () => {}));
     this.unsubs.push(trackViewer(MATCH_ID, this.viewerId, count => { this.state.onlineViewers = count; $("viewerCount").textContent = count; }));
   },
 
   publish() {
     this.state = mergeMatch(this.live, this.store, this.state);
-    if (!this.hasData(this.state)) return this.noMatch("Waiting for match data...");
+    if (!this.hasData(this.state)) return this.waiting("Waiting for admin data...");
     this.saveBackup();
     this.hideState();
     this.updateShareMeta(this.state);
@@ -68,17 +70,47 @@ window.app = {
   },
 
   hasData(m) { return !!(m?.matchId || m?.matchTitle || m?.liveStarted || m?.matchFinished || Number(m?.runs || 0) || Number(m?.balls || 0)); },
+  waiting(msg) {
+    $("liveInfo").textContent = msg;
+    if (!this.offlineBackupLoaded) this.showState("Loading Match", msg, "loading");
+  },
   noMatch(msg) {
     if (!this.offlineBackupLoaded) $("matchTitle").textContent = "Live Cricket";
     $("liveInfo").textContent = this.offlineBackupLoaded ? `${msg} Showing the last saved score.` : msg;
-    if (!this.offlineBackupLoaded) this.showState("Match Unavailable", msg);
+    if (!this.offlineBackupLoaded) this.showState("Match Unavailable", msg, "error");
   },
-  showState(title, text) { $("pageStateTitle").textContent = title; $("pageStateText").textContent = text; $("pageState").classList.remove("hidden"); },
+  showState(title, text, type = "loading") {
+    $("pageStateTitle").textContent = title;
+    $("pageStateText").textContent = text;
+    $("pageState").className = `page-state ${type}`;
+  },
   hideState() { $("pageState").classList.add("hidden"); },
   retry() { this.showState("Retrying", "Refreshing match data..."); this.connect(); if (this.store || this.live) this.publish(); },
   saveBackup() { try { if (this.hasData(this.state)) localStorage.setItem(USER_MATCH_BACKUP_KEY, JSON.stringify({ savedAt: Date.now(), state: this.state })); } catch (_) {} },
   loadBackup() { try { const saved = JSON.parse(localStorage.getItem(USER_MATCH_BACKUP_KEY) || "{}"); if (saved?.state && this.hasData(saved.state)) { this.offlineBackupLoaded = true; this.state = normalizeState(saved.state); this.render(); this.hideState(); $("liveInfo").textContent = "Showing the last saved score. Live updates will resume automatically."; } } catch (_) {} },
-  openTab(id, btn) { document.querySelectorAll(".content").forEach(c => c.classList.remove("active")); document.querySelectorAll(".tab").forEach(t => t.classList.remove("active")); $(id).classList.add("active"); btn.classList.add("active"); this.render(); },
+  openTab(id, btn) {
+    if (btn?.classList.contains("hidden")) { id = "overview"; btn = document.querySelector('[data-tab="overview"]'); }
+    document.querySelectorAll(".content").forEach(c => c.classList.remove("active"));
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    $(id).classList.add("active");
+    btn.classList.add("active");
+    this.render();
+  },
+  updateLeagueVisibility(m) {
+    const displaySetting = m.showPublicLeague ?? m.league?.showPublicLeague ?? this.publicSettings?.showPublicLeague;
+    const show = displaySetting !== false;
+    ["league", "points"].forEach(id => {
+      document.querySelector(`[data-tab="${id}"]`)?.classList.toggle("hidden", !show);
+      $(id)?.classList.toggle("hidden", !show);
+    });
+    const active = document.querySelector(".content.active");
+    if (!show && (active?.id === "league" || active?.id === "points")) {
+      active.classList.remove("active");
+      $("overview")?.classList.add("active");
+      document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+      document.querySelector('[data-tab="overview"]')?.classList.add("active");
+    }
+  },
   follow() {
     const link = this.state.followLink || location.href;
     if (this.state.followLink) {
@@ -109,8 +141,9 @@ window.app = {
 
   render() {
     const m = normalizeState(this.state);
+    this.updateLeagueVisibility(m);
     document.body.classList.toggle("live-glow", !!(m.liveStarted && !m.matchFinished && !m.scoringLocked));
-    const order = this.inningsOrder(m);
+    const order = this.battingFirstOrder(m);
     const first = order.first;
     const second = order.second;
     $("matchTitle").textContent = m.matchTitle || "Live Match";
@@ -120,30 +153,46 @@ window.app = {
     $("logoB").innerHTML = this.logo(second);
     const firstScore = this.inningsScore(m, first?.name);
     const secondScore = this.inningsScore(m, second?.name);
-    const firstLive = m.inningNumber === 1 && !m.matchFinished;
-    const secondLive = m.inningNumber === 2 && !m.matchFinished;
-    const firstText = firstLive ? `${m.runs}/${m.wkts}` : this.safe(firstScore || m.firstInnings || "-");
-    const firstMeta = firstLive ? `(${overText(m.balls)}) · Batting` : "1st innings";
-    const secondText = secondLive ? `${m.runs}/${m.wkts}` : this.safe(secondScore || m.secondInnings || "Yet to bat");
-    const secondMeta = secondLive ? `(${overText(m.balls)}) · Batting` : (m.matchFinished || secondScore || m.secondInnings ? "2nd innings" : "");
-    $("scoreA").innerHTML = `<span class="score-main">${firstText}</span>${firstMeta ? `<small>${firstMeta}</small>` : ""}`;
-    $("scoreB").innerHTML = `<span class="score-main">${secondText}</span>${secondMeta ? `<small>${secondMeta}</small>` : ""}`;
+    const firstLive = first?.name && first.name === m.battingTeam?.name && !m.matchFinished;
+    const secondLive = second?.name && second.name === m.battingTeam?.name && !m.matchFinished;
+    const firstSaved = this.splitScoreOver(firstScore || this.savedInningsText(m, first?.name));
+    const secondSaved = this.splitScoreOver(secondScore || this.savedInningsText(m, second?.name));
+    const firstText = firstLive ? `${m.runs}/${m.wkts}` : this.safe(firstSaved.score || "-");
+    const firstMeta = firstLive ? `(${overText(m.balls)})` : "";
+    const secondText = secondLive ? `${m.runs}/${m.wkts}` : this.safe(secondSaved.score || "Yet to bat");
+    const secondMeta = secondLive ? `(${overText(m.balls)})` : "";
+    $("scoreA").innerHTML = `<span class="score-main">${firstText}</span>${firstMeta || firstSaved.over ? `<small>${this.safe(firstMeta || firstSaved.over)}</small>` : ""}`;
+    $("scoreB").innerHTML = `<span class="score-main">${secondText}</span>${secondMeta || secondSaved.over ? `<small>${this.safe(secondMeta || secondSaved.over)}</small>` : ""}`;
     const teamCards = document.querySelectorAll(".match-card .team");
     teamCards[0]?.classList.toggle("batting-now", firstLive);
     teamCards[1]?.classList.toggle("batting-now", secondLive);
-    const mode = m.matchFinished ? "result" : (m.scoringLocked ? "locked" : (m.liveControl?.mode === "time" ? "time" : (m.liveControl?.mode === "delay" ? "delay" : (m.liveControl?.mode === "paused" ? "break" : "live"))));
+    const publicMode = m.liveControl?.mode || "";
+    const mode = m.matchFinished ? "result" : (publicMode === "time" ? "time" : (publicMode === "delay" ? "delay" : (publicMode === "paused" ? "break" : (m.scoringLocked ? "break" : "live"))));
     $("centerStatus").className = `center ${mode}`;
-    $("centerStatus").textContent = m.matchFinished ? "Result" : (m.scoringLocked ? "Locked" : (m.liveControl?.mode === "time" ? this.formatTime(m.liveControl.displayTime) : (m.liveControl?.mode === "paused" ? "Break" : (m.liveControl?.mode === "delay" ? "Delay" : "Live"))));
+    $("centerStatus").textContent = m.matchFinished ? "Result" : (publicMode === "time" ? this.formatTime(m.liveControl.displayTime) : (publicMode === "delay" ? "Delay" : (publicMode === "paused" || m.scoringLocked ? "Break" : "Live")));
     const crr = m.balls ? (m.runs / (m.balls / 6)).toFixed(2) : "0.00";
     const remBalls = Math.max(Number(m.totalOvers || 20) * 6 - m.balls, 0);
     const need = m.target ? Math.max(m.target - m.runs, 0) : null;
     const rrr = need == null ? "-" : (remBalls ? ((need * 6) / remBalls).toFixed(2) : "0.00");
     $("liveInfo").textContent = m.matchFinished ? `${m.winnerText || "Match Complete"}${m.playerOfMatch ? " · Player of Match: " + m.playerOfMatch : ""}` : (m.liveControl?.mode === "time" ? `Scheduled time: ${this.formatTime(m.liveControl.displayTime)}` : `${m.tossText || "Live"} · CRR ${crr}${need != null ? ` · Need ${need} from ${remBalls}` : ""}`);
-    const striker = m.striker === 1 ? m.bat1 : m.bat2;
-    const non = m.striker === 1 ? m.bat2 : m.bat1;
-    $("battingInfo").innerHTML = `<b>${this.safe(striker.name)}</b> ${striker.r}/${striker.b} 🏏<br>${this.safe(non.name)} ${non.r}/${non.b}`;
-    const liveBowler = m.bowlerStats?.[m.bowler.name] ? { ...m.bowler, ...m.bowlerStats[m.bowler.name], r: m.bowlerStats[m.bowler.name].runs ?? m.bowler.r, w: m.bowlerStats[m.bowler.name].wkts ?? m.bowler.w } : m.bowler;
-    $("bowlingInfo").innerHTML = `<b>${this.safe(liveBowler.name)}</b> ${overText(liveBowler.balls)}-${liveBowler.r ?? liveBowler.runs}-${liveBowler.w ?? liveBowler.wkts}<br>Last: ${this.safe(m.lastOverBowler || "-")}`;
+    document.querySelector(".details")?.classList.toggle("hidden", !!m.matchFinished);
+    const isScheduled = String(m.status || "").toLowerCase() === "scheduled" && !m.liveStarted;
+    if (m.matchFinished) {
+      $("battingInfo").innerHTML = "";
+      $("bowlingInfo").innerHTML = "";
+    } else if (isScheduled) {
+      $("battingInfo").innerHTML = `<b>${this.safe(m.venue || "Venue TBA")}</b><br>${this.safe(m.matchDate || "Date TBA")}`;
+      $("bowlingInfo").innerHTML = `<b>${this.formatTime(m.liveControl?.displayTime || m.matchTime)}</b><br>Match scheduled`;
+    } else {
+      const striker = m.striker === 1 ? m.bat1 : m.bat2;
+      const non = m.striker === 1 ? m.bat2 : m.bat1;
+      $("battingInfo").innerHTML = `<b>${this.safe(striker.name)}</b> ${striker.r}/${striker.b} 🏏<br>${this.safe(non.name)} ${non.r}/${non.b}`;
+      const liveBowler = m.bowlerStats?.[m.bowler.name] ? { ...m.bowler, ...m.bowlerStats[m.bowler.name], r: m.bowlerStats[m.bowler.name].runs ?? m.bowler.r, w: m.bowlerStats[m.bowler.name].wkts ?? m.bowler.w } : m.bowler;
+      const currentOver = (!m.matchFinished && m.liveStarted && (m.over || []).length)
+        ? `<div class="mini-over"><span>Current over</span>${this.ballsNewestFirst(m.over).map(x => `<i class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0,3))}</i>`).join("")}</div>`
+        : "";
+      $("bowlingInfo").innerHTML = `<b>${this.safe(liveBowler.name)}</b> ${overText(liveBowler.balls)}-${liveBowler.r ?? liveBowler.runs}-${liveBowler.w ?? liveBowler.wkts}<br>Last: ${this.safe(m.lastOverBowler || "-")}${currentOver}`;
+    }
     this.renderOvers(m);
     $("overviewScore").textContent = `${m.runs}/${m.wkts} (${overText(m.balls)})`;
     $("overviewToss").textContent = m.tossText || "-"; $("overviewCRR").textContent = crr; $("overviewExtras").textContent = m.extras; $("overviewLastWicket").textContent = m.lastWicket || "-";
@@ -153,9 +202,48 @@ window.app = {
   },
 
   renderOvers(m) {
-    const current = m.over?.length ? `<div class="over-row">Current ${m.over.map(x => `<span class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0,3))}</span>`).join("")}</div>` : "";
-    const done = (m.overSummary || []).map(o => `<div class="over-row">Over ${o.overNo} ${o.timeline.map(x => `<span class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0,3))}</span>`).join("")}</div>`).join("");
-    $("overStrip").innerHTML = current + done || `<div class="over-row">Over - <span class="ball">-</span></div>`;
+    const seenCurrentTeam = m.battingTeam?.name || "";
+    const savedInnings = this.orderedInningsDetails(m);
+    if (m.matchFinished && savedInnings.length) {
+      const first = savedInnings[0]?.overSummary?.length ? this.oversNewestFirst(savedInnings[0].overSummary).map(o => this.overRowHtml(o, savedInnings[0].team || savedInnings[0].battingTeam || "")).join("") : "";
+      const second = savedInnings[1]?.overSummary?.length ? this.oversNewestFirst(savedInnings[1].overSummary).map(o => this.overRowHtml(o, savedInnings[1].team || savedInnings[1].battingTeam || "")).join("") : "";
+      const separator = first && second ? `<div class="over-row innings-separator">2nd Innings</div>` : "";
+      $("overStrip").innerHTML = second ? (second + separator + first) : (first || `<div class="over-row">Over - <span class="ball">-</span></div>`);
+      return;
+    }
+    const saved = savedInnings.flatMap(inn => {
+      if (!inn?.overSummary?.length) return [];
+      const team = inn.team || inn.battingTeam || "";
+      return this.oversNewestFirst(inn.overSummary).map(o => this.overRowHtml(o, team));
+    }).join("");
+    const secondStarted = Number(m.inningNumber || 1) > 1;
+    const currentOverNo = Math.floor(Number(m.balls || 0) / 6) + 1;
+    const current = (secondStarted || !saved) && m.over?.length ? `<div class="over-row"><span class="over-label">Over ${currentOverNo}</span><span class="over-balls">${this.ballsNewestFirst(m.over).map(x => `<span class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0,3))}</span>`).join("")}</span></div>` : "";
+    const done = (!saved || secondStarted) ? this.oversNewestFirst(m.overSummary || []).map(o => this.overRowHtml(o, seenCurrentTeam)).join("") : "";
+    if (saved && secondStarted) {
+      const separator = current || done ? `<div class="over-row innings-separator">2nd Innings</div>` : "";
+      $("overStrip").innerHTML = current + done + separator + saved || `<div class="over-row">Over - <span class="ball">-</span></div>`;
+      return;
+    }
+    $("overStrip").innerHTML = current + done + saved || `<div class="over-row">Over - <span class="ball">-</span></div>`;
+  },
+  oversNewestFirst(rows = []) {
+    return [...rows].sort((a, b) => Number(b?.overNo || 0) - Number(a?.overNo || 0));
+  },
+  ballsNewestFirst(rows = []) {
+    return [...rows].reverse();
+  },
+  overRowHtml(o, team = "") {
+    return `<div class="over-row"><span class="over-label">Over ${o.overNo}</span><span class="over-balls">${this.ballsNewestFirst(o.timeline || []).map(x => `<span class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0,3))}</span>`).join("")}</span></div>`;
+  },
+  orderedInningsDetails(m) {
+    const details = m.inningsDetails || {};
+    const orderedNames = [m.firstBattingTeam?.name, m.secondBattingTeam?.name].filter(Boolean);
+    const rows = orderedNames.map(name => details[name]).filter(Boolean);
+    Object.entries(details).forEach(([name, inn]) => {
+      if (!orderedNames.includes(name)) rows.push(inn);
+    });
+    return rows;
   },
 
   renderScorecard(m) {
@@ -167,7 +255,7 @@ window.app = {
     let batting = detail?.battingScorecard || [];
     if (!detail && m.battingTeam?.name === team) batting = this.currentBattingRows(m);
     const bowling = detail?.bowlerStats || (m.battingTeam?.name === team ? m.bowlerStats : {});
-    $("scorecardBody").innerHTML = `<div class="card"><h3>${this.safe(team)} Batting</h3><table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>${batting.length ? batting.map(b => `<tr><td><b>${this.safe(b.name)}</b> ${b.out ? "" : "*"}<br><small>${this.safe(b.dismissal || "")}</small></td><td>${b.r||0}</td><td>${b.b||0}</td><td>${b.f||0}</td><td>${b.s||0}</td><td>${calcSR(b.r,b.b)}</td></tr>`).join("") : `<tr><td colspan="6">No batting data</td></tr>`}</tbody></table></div><div class="card"><h3>Bowling</h3><table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody>${Object.keys(bowling).length ? Object.entries(bowling).map(([name,s]) => `<tr><td><b>${this.safe(name)}</b></td><td>${overText(s.balls||0)}</td><td>${s.runs||0}</td><td>${s.wkts||0}</td><td>${calcER(s.runs,s.balls)}</td></tr>`).join("") : `<tr><td colspan="5">No bowling data</td></tr>`}</tbody></table></div>`;
+    $("scorecardBody").innerHTML = `<div class="card"><h3>${this.safe(team)} Batting</h3><table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>${batting.length ? batting.map(b => `<tr><td><b>${this.safe(b.name)}</b> ${(!b.out && !b.retired) ? "*" : ""}<br><small>${this.safe(b.dismissal || "")}</small></td><td>${b.r||0}</td><td>${b.b||0}</td><td>${b.f||0}</td><td>${b.s||0}</td><td>${calcSR(b.r,b.b)}</td></tr>`).join("") : `<tr><td colspan="6">No batting data</td></tr>`}</tbody></table></div><div class="card"><h3>Bowling</h3><table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody>${Object.keys(bowling).length ? Object.entries(bowling).map(([name,s]) => `<tr><td><b>${this.safe(name)}</b></td><td>${overText(s.balls||0)}</td><td>${s.runs||0}</td><td>${s.wkts||0}</td><td>${calcER(s.runs,s.balls)}</td></tr>`).join("") : `<tr><td colspan="5">No bowling data</td></tr>`}</tbody></table></div>`;
   },
 
   currentBattingRows(m) { const rows = [...(m.battingScorecard || [])]; [m.bat1, m.bat2].forEach(b => { if (b?.name && b.name !== "-" && !rows.some(x => x.name === b.name)) rows.push(b); }); return rows; },
@@ -177,7 +265,15 @@ window.app = {
       rows = [];
       Object.values(m.inningsDetails || {}).forEach(inn => rows.push(...(inn.commentary || [])));
     }
-    $("commentaryList").innerHTML = rows.length ? rows.map(c => `<div class="comment"><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div>`).join("") : "<span class='muted'>No commentary</span>";
+    $("commentaryList").innerHTML = rows.length ? rows.map(c => {
+      const tag = this.commentaryTag(c);
+      return `<div class="comment commentary-item">${tag}<div><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div></div>`;
+    }).join("") : "<span class='muted'>No commentary</span>";
+  },
+  commentaryTag(c = {}) {
+    const text = String(c.text || "");
+    const label = c.type === "over" || /^Over/i.test(String(c.ball || "")) ? "OVER" : (/WICKET!/i.test(text) ? "WICKET" : (/SIX!/i.test(text) ? "SIX" : (/FOUR!/i.test(text) ? "FOUR" : "")));
+    return label ? `<span class="commentary-tag ${label.toLowerCase()}">${label}</span>` : "";
   },
   renderStats(m) {
     const rows = this.allBatters(m);
@@ -201,22 +297,52 @@ window.app = {
   renderRunGraph(m) {
     const series = this.graphSeries(m);
     $("graphSummary").textContent = series.length > 1 ? "Innings comparison" : "Live progression";
-    $("runGraph").innerHTML = this.runWormSvg(series);
+    $("runGraph").innerHTML = this.runWormSvg(series, m.totalOvers);
   },
   graphSeries(m) {
     const innings = Object.values(m.inningsDetails || {});
-    const source = innings.length ? innings : [{ team: m.battingTeam?.name || "Current", overSummary: m.overSummary || [], runs: m.runs, wkts: m.wkts, balls: m.balls }];
+    const current = { team: m.battingTeam?.name || "Current", overSummary: m.overSummary || [], over: m.over || [], runs: m.runs, wkts: m.wkts, balls: m.balls };
+    const source = innings.length ? [...innings] : [current];
+    const currentTeam = current.team;
+    const hasCurrentScore = Number(m.runs || 0) || Number(m.balls || 0) || current.over.length || current.overSummary.length;
+    const currentIndex = source.findIndex(inn => (inn.team || inn.battingTeam?.name || inn.battingTeam) === currentTeam);
+    if (innings.length && hasCurrentScore && !m.matchFinished) {
+      if (currentIndex >= 0) source[currentIndex] = { ...source[currentIndex], ...current };
+      else source.push(current);
+    }
     return source.map((inn, idx) => {
       const points = [{ over: 0, runs: 0, wkts: 0 }];
       let runs = 0, wkts = 0;
-      (inn.overSummary || []).forEach((over, i) => {
-        (over.timeline || []).forEach(ball => {
-          runs += this.ballRuns(ball);
-          if (/^W(?!d)|wicket/i.test(String(ball))) wkts += 1;
-        });
-        points.push({ over: Number(over.overNo || i + 1), runs, wkts });
+      let legalBalls = 0;
+      const pushBall = (ball) => {
+        const text = String(ball || "");
+        runs += this.ballRuns(text);
+        const wicketBall = /^W(?!d)|wicket/i.test(text);
+        if (wicketBall) wkts += 1;
+        if (!/(Wd|wide|Nb|no ball|no-ball)/i.test(text)) legalBalls += 1;
+        const over = Number((legalBalls / 6).toFixed(2));
+        const last = points[points.length - 1];
+        if (last && last.over === over && last.runs === runs && last.wkts === wkts) return;
+        points.push({ over, runs, wkts, wicket: wicketBall });
+      };
+      const completedOvers = [...(inn.overSummary || [])].reverse();
+      completedOvers.forEach((over, i) => {
+        const before = legalBalls;
+        (over.timeline || []).forEach(pushBall);
+        const targetBalls = Math.max(legalBalls, Number(over.overNo || i + 1) * 6);
+        if (legalBalls === before && (Number(over.runs || 0) || Number(over.wkts || 0))) {
+          runs += Number(over.runs || 0);
+          const overWkts = Number(over.wkts || 0);
+          wkts += overWkts;
+          legalBalls = targetBalls;
+          points.push({ over: Number((legalBalls / 6).toFixed(2)), runs, wkts, wicket: overWkts > 0 });
+        }
       });
-      if (points.length === 1 && Number(inn.runs || 0)) points.push({ over: Math.max(1, Math.ceil(Number(inn.balls || 0) / 6)), runs: Number(inn.runs || 0), wkts: Number(inn.wkts || 0) });
+      if (Array.isArray(inn.over) && inn.over.length) inn.over.forEach(pushBall);
+      if (Number(inn.runs || 0) > runs || Number(inn.wkts || 0) > wkts) {
+        const balls = Math.max(legalBalls, Number(inn.balls || 0));
+        points.push({ over: Number(((balls || 6) / 6).toFixed(2)), runs: Number(inn.runs || 0), wkts: Number(inn.wkts || 0) });
+      }
       return { name: inn.team || inn.battingTeam || `Innings ${idx + 1}`, points };
     });
   },
@@ -227,55 +353,116 @@ window.app = {
     if (/Nb|no/i.test(text)) return n || 1;
     return Number.isFinite(n) ? n : 0;
   },
-  runWormSvg(series = []) {
-    const width = 720, height = 292, pad = 42;
+  runWormSvg(series = [], totalOvers = 0) {
+    const width = 720, height = 330, pad = 52;
     const all = series.flatMap(s => s.points);
-    const maxRuns = Math.max(20, ...all.map(p => p.runs));
-    const maxOver = Math.max(1, ...all.map(p => p.over));
-    const colors = ["#0f766e", "#2563eb", "#dc2626", "#7c3aed"];
+    const maxRunsRaw = Math.max(20, ...all.map(p => Number(p.runs || 0)));
+    const maxRuns = Math.ceil(maxRunsRaw / 50) * 50;
+    const maxOverRaw = Math.max(1, ...all.map(p => Number(p.over || 0)));
+    const maxOver = Math.max(1, Math.ceil(maxOverRaw), Number(totalOvers || 0));
+    const colors = ["#e53935", "#1a73e8", "#0f766e", "#7c3aed"];
     const x = over => pad + (Number(over || 0) / maxOver) * (width - pad * 2);
     const y = runs => height - pad - (Number(runs || 0) / maxRuns) * (height - pad * 2);
     const grid = [0,.2,.4,.6,.8,1].map(v => {
       const gy = y(maxRuns * v);
-      return `<line x1="${pad}" y1="${gy}" x2="${width-pad}" y2="${gy}" class="graph-grid"/><text x="10" y="${gy+4}" class="graph-label">${Math.round(maxRuns*v)}</text>`;
+      return `<line x1="${pad}" y1="${gy}" x2="${width-pad}" y2="${gy}" class="graph-grid"/><text x="${pad-38}" y="${gy+4}" class="graph-label">${Math.round(maxRuns*v)}</text>`;
     }).join("");
-    const overTicks = Array.from({ length: Math.min(maxOver, 10) + 1 }, (_, i) => Math.round((maxOver / Math.min(maxOver, 10)) * i)).filter((v, i, arr) => i === 0 || v !== arr[i - 1]).map(over => `<line x1="${x(over)}" y1="${height-pad}" x2="${x(over)}" y2="${height-pad+5}" class="graph-axis"/><text x="${x(over)-4}" y="${height-18}" class="graph-label">${over}</text>`).join("");
+    const tickCount = Math.min(maxOver, 10);
+    const overTicks = Array.from({ length: tickCount + 1 }, (_, i) => Math.round((maxOver / tickCount) * i)).filter((v, i, arr) => i === 0 || v !== arr[i - 1]).map(over => `<line x1="${x(over)}" y1="${height-pad}" x2="${x(over)}" y2="${height-pad+5}" class="graph-axis"/><text x="${x(over)-4}" y="${height-18}" class="graph-label">${over}</text>`).join("");
+    const legend = series.map((s, i) => {
+      const lx = pad + i * 148;
+      const marker = i === 1 ? `<rect x="${lx}" y="20" width="14" height="14" rx="1" fill="${colors[i%colors.length]}"/>` : `<circle cx="${lx+7}" cy="27" r="7" fill="${colors[i%colors.length]}"/>`;
+      return `${marker}<text x="${lx+24}" y="31" class="graph-key" fill="#4b5563">${this.safe(s.name)}</text>`;
+    }).join("");
     const lines = series.map((s, i) => {
       const d = s.points.map((p, idx) => `${idx ? "L" : "M"}${x(p.over).toFixed(1)},${y(p.runs).toFixed(1)}`).join(" ");
       const points = s.points.map(p => {
         const label = `${this.safe(s.name)} | Over ${p.over} | ${p.runs}/${p.wkts || 0}`;
-        return `<circle class="graph-hit" cx="${x(p.over)}" cy="${y(p.runs)}" r="11" data-team="${this.safe(s.name)}" data-over="${p.over}" data-runs="${p.runs}" data-wkts="${p.wkts || 0}"></circle><circle cx="${x(p.over)}" cy="${y(p.runs)}" r="${p.wkts ? 5 : 3.2}" fill="${colors[i%colors.length]}" stroke="#fff" stroke-width="2"><title>${label}</title></circle>`;
+        return p.wicket ? `<circle cx="${x(p.over)}" cy="${y(p.runs)}" r="5" fill="${colors[i%colors.length]}" stroke="#fff" stroke-width="2"><title>${label}</title></circle>` : "";
       }).join("");
-      return `<path d="${d}" fill="none" stroke="${colors[i%colors.length]}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><text x="${pad + i*154}" y="22" class="graph-key" fill="${colors[i%colors.length]}">${this.safe(s.name)}</text>${points}`;
+      return `<path d="${d}" fill="none" stroke="${colors[i%colors.length]}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>${points}`;
     }).join("");
+    this.graphState = { series, width, height, pad, maxOver, maxRuns, colors };
     setTimeout(() => this.bindGraphTooltip(), 0);
-    return `<div class="graph-wrap"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Run progression graph"><rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>${grid}${overTicks}<line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="graph-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" class="graph-axis"/>${lines}<text x="${width/2-28}" y="${height-4}" class="graph-label">Overs</text></svg><div id="graphTooltip" class="graph-tooltip hidden"></div></div>`;
+    return `<div class="graph-wrap"><svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Scoring comparison graph"><rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>${legend}${grid}${overTicks}<line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="graph-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" class="graph-axis"/>${lines}<line id="graphGuide" class="graph-guide hidden" x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}"/><g id="graphHoverDots"></g><rect class="graph-capture" x="${pad}" y="${pad}" width="${width-pad*2}" height="${height-pad*2}"/><text x="${pad-4}" y="${height-7}" class="graph-label">overs</text></svg><div id="graphTooltip" class="graph-tooltip hidden"></div></div>`;
   },
   bindGraphTooltip() {
     const box = $("runGraph");
-    const tip = $("graphTooltip");
-    if (!box || !tip || box.dataset.tooltipBound === "1") return;
+    if (!box || box.dataset.tooltipBound === "1") return;
     box.dataset.tooltipBound = "1";
-    const show = (target, ev) => {
+    const overTextFromValue = (over) => {
+      const balls = Math.max(0, Math.round(Number(over || 0) * 6));
+      return `${Math.floor(balls / 6)}.${balls % 6}`;
+    };
+    const pointAtOver = (points, over) => {
+      return points.reduce((best, point) => point.over <= over && point.over >= best.over ? point : best, points[0] || { over: 0, runs: 0, wkts: 0 });
+    };
+    const show = (ev) => {
+      const state = this.graphState;
+      const tip = $("graphTooltip");
+      const guide = $("graphGuide");
+      const dots = $("graphHoverDots");
+      if (!tip) return;
+      if (!state?.series?.length) return;
       const rect = box.getBoundingClientRect();
-      tip.innerHTML = `<b>${target.dataset.team}</b><span>Over ${target.dataset.over}</span><strong>${target.dataset.runs}/${target.dataset.wkts}</strong>`;
+      const svg = box.querySelector("svg");
+      const svgRect = svg.getBoundingClientRect();
+      const localX = (ev.clientX - svgRect.left) * (state.width / svgRect.width);
+      const clampedX = Math.min(state.width - state.pad, Math.max(state.pad, localX));
+      const over = ((clampedX - state.pad) / (state.width - state.pad * 2)) * state.maxOver;
+      const rows = state.series.map((s, i) => ({ ...pointAtOver(s.points, over), name: s.name, color: state.colors[i % state.colors.length], shape: i === 1 ? "square" : "dot" }));
+      const tooltipOver = rows.reduce((best, point) => Math.abs(point.over - over) < Math.abs(best.over - over) ? point : best, rows[0]);
+      guide?.classList.remove("hidden");
+      if (guide) {
+        guide.setAttribute("x1", clampedX.toFixed(1));
+        guide.setAttribute("x2", clampedX.toFixed(1));
+      }
+      if (dots) {
+        dots.innerHTML = rows.map(row => {
+          const cy = state.height - state.pad - (Number(row.runs || 0) / state.maxRuns) * (state.height - state.pad * 2);
+          return `<circle class="graph-hover-dot" cx="${clampedX.toFixed(1)}" cy="${cy.toFixed(1)}" r="5" fill="${row.color}"/>`;
+        }).join("");
+      }
+      tip.innerHTML = `<b>${overTextFromValue(tooltipOver.over)} overs</b>${rows.map(row => `<div class="graph-tip-row"><span><i class="${row.shape}" style="background:${row.color}"></i>${this.safe(row.name)}</span><strong>${row.runs}/${row.wkts || 0}</strong></div>`).join("")}`;
       tip.classList.remove("hidden");
-      tip.style.left = `${Math.min(rect.width - 130, Math.max(8, ev.clientX - rect.left + 12))}px`;
-      tip.style.top = `${Math.max(8, ev.clientY - rect.top - 58)}px`;
+      const tipWidth = tip.offsetWidth || 190;
+      const tipHeight = tip.offsetHeight || 112;
+      const pointerX = ev.clientX - rect.left;
+      const pointerY = ev.clientY - rect.top;
+      let left = pointerX + 14;
+      if (left + tipWidth > rect.width - 8) left = pointerX - tipWidth - 14;
+      let top = pointerY - tipHeight - 12;
+      if (top < 8) top = pointerY + 14;
+      tip.style.left = `${Math.min(rect.width - tipWidth - 8, Math.max(8, left))}px`;
+      tip.style.top = `${Math.min(rect.height - tipHeight - 8, Math.max(8, top))}px`;
+    };
+    const hide = () => {
+      const tip = $("graphTooltip");
+      const guide = $("graphGuide");
+      const dots = $("graphHoverDots");
+      if (!tip) return;
+      tip.classList.add("hidden");
+      guide?.classList.add("hidden");
+      if (dots) dots.innerHTML = "";
     };
     box.addEventListener("pointermove", e => {
-      const target = e.target.closest?.(".graph-hit");
-      if (!target) return tip.classList.add("hidden");
-      show(target, e);
+      if (!e.target.closest?.(".graph-capture") && !e.target.closest?.("svg")) return hide();
+      show(e);
     });
-    box.addEventListener("pointerleave", () => tip.classList.add("hidden"));
-    box.addEventListener("click", e => {
-      const target = e.target.closest?.(".graph-hit");
-      if (target) show(target, e);
-    });
+    box.addEventListener("pointerdown", show);
+    box.addEventListener("pointerleave", hide);
   },
-  renderPlayers(m) { const blocks=[]; Object.entries(m.teams||{}).forEach(([team,players]) => (players||[]).forEach(p => { const meta=m.teamInfo?.[team]?.players?.[p]||{}; const st=this.playerStats(p,team); blocks.push(`<div class="player" onclick="app.playerModal('${encodeURIComponent(team)}','${encodeURIComponent(p)}')"><div class="avatar">${meta.image?`<img src="${this.safe(meta.image)}">`:this.short(p).slice(0,2)}</div><b>${this.safe(p)}</b><br><small>${this.safe(team)}</small><div class="mini-line">${st.runs} runs · ${st.wkts} wkts</div></div>`); })); $("playersList").innerHTML = blocks.join("") || "<span class='muted'>No players</span>"; },
-  renderMatches() { const current = this.state?.matchId ? `<div class="match-card-mini"><b>${this.safe(this.state.matchTitle)}</b><br><small>Current · ${this.state.runs}/${this.state.wkts} (${overText(this.state.balls)})</small></div>` : ""; const history = this.completed.map(m => `<div class="match-card-mini" onclick="location.href='user.html?match=${m.matchId}'"><b>${this.safe(m.matchTitle||m.title||'Match')}</b><br><small>${this.safe(m.winnerText||'')}<br>${this.safe(m.firstInnings||'')} ${m.secondInnings?' | '+this.safe(m.secondInnings):''}</small></div>`).join(""); $("matchesList").innerHTML = current + history || "<span class='muted'>No matches</span>"; },
+  renderPlayers(m) { const blocks=[]; Object.entries(m.teams||{}).forEach(([team,players]) => (players||[]).forEach(p => { const meta=m.teamInfo?.[team]?.players?.[p]||{}; blocks.push(`<div class="player" onclick="app.playerModal('${encodeURIComponent(team)}','${encodeURIComponent(p)}')"><div class="avatar">${meta.image?`<img src="${this.safe(meta.image)}">`:this.short(p).slice(0,2)}</div><b>${this.safe(p)}</b><br><small>${this.safe(team)}</small></div>`); })); $("playersList").innerHTML = blocks.join("") || "<span class='muted'>No players</span>"; },
+  renderMatches() {
+    const s = this.state || {};
+    const isScheduled = String(s.status || "").toLowerCase() === "scheduled" && !s.liveStarted;
+    const currentMeta = isScheduled
+      ? `Scheduled - ${this.safe([s.matchDate, this.formatTime(s.liveControl?.displayTime || s.matchTime)].filter(Boolean).join(" "))}`
+      : `Current - ${s.runs}/${s.wkts} (${overText(s.balls)})`;
+    const current = s.matchId ? `<div class="match-card-mini"><b>${this.safe(s.matchTitle)}</b><br><small>${currentMeta}</small></div>` : "";
+    const history = this.completed.map(m => `<div class="match-card-mini" onclick="location.href='user.html?match=${m.matchId}'"><b>${this.safe(m.matchTitle||m.title||'Match')}</b><br><small>${this.safe(m.winnerText||'')}<br>${this.safe(m.firstInnings||'')} ${m.secondInnings?' | '+this.safe(m.secondInnings):''}</small></div>`).join("");
+    $("matchesList").innerHTML = current + history || "<span class='muted'>No matches</span>";
+  },
   renderLeague(m) { const l=m.league||{}; const schedule=Array.isArray(l.schedule)?l.schedule:[]; const teams=Array.isArray(l.teams)?l.teams:[]; $("leagueTitle").textContent=l.name||"League";$("leagueTeams").textContent=teams.length;$("leagueMatches").textContent=schedule.length;$("leagueDone").textContent=schedule.filter(x=>x.status==='completed'||x.status==='done').length;$("leaguePending").textContent=schedule.filter(x=>!(x.status==='completed'||x.status==='done')).length; const filtered=this.filterSchedule(schedule); $("leagueSchedule").innerHTML=filtered.map(x=>{ const result=x.result||x.winnerText||""; const score=[x.firstInnings,x.secondInnings].filter(Boolean).join(" | "); const when=[x.matchDate,x.matchTime].filter(Boolean).join(" "); const meta=[x.stage||'League',x.round,x.status||'pending'].filter(Boolean).join(" · "); return `<div class="match-card-mini fixture-card"><div class="fixture-top">${when?`<span>${this.safe(when)}</span>`:`<span>Time TBA</span>`}<b>${this.safe(x.status||'pending')}</b></div><strong>${this.safe(x.teamA?.name||x.teamA)} vs ${this.safe(x.teamB?.name||x.teamB)}</strong><small>${this.safe(meta)}</small>${x.venue?`<small>${this.safe(x.venue)}</small>`:""}${result?`<b class="fixture-result">${this.safe(result)}</b>`:""}${score?`<small>${this.safe(score)}</small>`:""}</div>`; }).join("")||"<span class='muted'>No schedule</span>"; },
   filterSchedule(schedule) {
     const done = x => ["completed", "done", "no-result", "cancelled"].includes(String(x.status || "").toLowerCase());
@@ -502,6 +689,31 @@ window.app = {
     const firstName = m.firstBattingTeam?.name || (m.inningNumber === 1 ? m.battingTeam?.name : keys[0]) || m.teamA?.name || m.battingTeam?.name;
     const secondName = m.secondBattingTeam?.name || (m.inningNumber === 1 ? m.bowlingTeam?.name : m.battingTeam?.name) || keys.find(k => k !== firstName) || (m.teamA?.name === firstName ? m.teamB?.name : m.teamA?.name);
     return { first: this.teamByName(m, firstName), second: this.teamByName(m, secondName) };
+  },
+  battingFirstOrder(m) {
+    if (!m.matchFinished && m.battingTeam?.name) {
+      const firstName = m.battingTeam.name;
+      const secondName = [m.teamA?.name, m.teamB?.name, m.bowlingTeam?.name].find(name => name && name !== firstName);
+      return { first: this.teamByName(m, firstName), second: this.teamByName(m, secondName) };
+    }
+    return this.inningsOrder(m);
+  },
+  savedInningsText(m, teamName) {
+    if (!teamName) return "";
+    if (teamName === m.firstBattingTeam?.name) return m.firstInnings || "";
+    if (teamName === m.secondBattingTeam?.name) return m.secondInnings || "";
+    return "";
+  },
+  inningsMeta(m, teamName, score = "") {
+    if (!teamName && !score) return "";
+    if (teamName === m.firstBattingTeam?.name) return "1st innings";
+    if (teamName === m.secondBattingTeam?.name) return "2nd innings";
+    return score ? "Innings" : "";
+  },
+  splitScoreOver(value = "") {
+    const text = String(value || "");
+    const match = text.match(/^(.+?)\s*(\([^()]+\))$/);
+    return match ? { score: match[1].trim(), over: match[2].trim() } : { score: text, over: "" };
   },
   inningsScore(m, team) { const d = m.inningsDetails?.[team]; return d ? `${d.runs}/${d.wkts} (${d.overs || overText(d.balls)})` : ""; },
   logo(team){ return team?.logo ? `<img src="${this.safe(team.logo)}">` : this.safe(team?.shortName || this.short(team?.name)); },

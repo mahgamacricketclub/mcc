@@ -3,7 +3,7 @@ import {
   loginAdmin, logoutAdmin, watchAuth, isAdmin,
   saveTeam, deleteTeam, listenTeams, savePlayer, deletePlayer, listenPlayers,
   getTeamsWithPlayers, saveLeague, deleteLeague, listenLeagues,
-  saveMatch, saveCompletedMatch, listenCompletedMatches, updateCompletedMatchMvp, deleteCompletedMatch, getStoredScorecard, savePlayerMatchStats, saveSavedLink, makeId, safeId
+  saveMatch, saveCompletedMatch, listenCompletedMatches, listenScheduledMatches, updateCompletedMatchMvp, deleteCompletedMatch, getStoredScorecard, savePlayerMatchStats, saveSavedLink, savePublicSettings, makeId, safeId
 } from "./firebase-store.js";
 import { writeLiveMatch } from "./firebase-live.js";
 import { livePayload, storePayload, normalizeState, normalizeBatter, overText, calcSR, calcER, clone } from "./live-sync.js";
@@ -12,6 +12,7 @@ const $ = (id) => document.getElementById(id);
 const todayKey = () => new Date().toISOString().slice(0, 10).replaceAll("-", "");
 const ACTIVE_MATCH_KEY = "cricket_admin_active_match_backup";
 const MANUAL_SCORE_KEY = (matchId) => `cricket_admin_manual_score_checkpoint_${matchId || "none"}`;
+const PUBLIC_LEAGUE_TABS_KEY = "cricket_admin_public_league_tabs";
 
 const blankState = () => normalizeState({
   matchId: "",
@@ -71,6 +72,8 @@ const blankState = () => normalizeState({
   superOver: null,
   mvp: "",
   playerOfMatch: "",
+  commentaryMode: "en",
+  setupMode: "schedule",
   followLink: "",
   dismissed: [],
   retired: [],
@@ -84,6 +87,7 @@ window.app = {
   teams: [],
   leagues: [],
   completed: [],
+  scheduled: [],
   selectedTeamId: "",
   selectedPlayerId: "",
   activeUnsubPlayers: null,
@@ -119,8 +123,13 @@ window.app = {
     $("loginPassword").addEventListener("keydown", e => { if (e.key === "Enter") this.login(); });
     $("logoutBtn").onclick = () => logoutAdmin();
     document.querySelectorAll(".tab").forEach(btn => btn.onclick = () => this.openPage(btn.dataset.page));
-    ["teamASelect", "teamBSelect", "tossDecision", "tossWinner", "openingStriker"].forEach(id => $(id).addEventListener("change", () => this.refreshSetupPlayers()));
+    document.querySelectorAll("input[name='setupMode']").forEach(r => r.onchange = () => this.setSetupMode(r.value));
+    ["teamASelect", "teamBSelect", "tossDecision", "tossWinner"].forEach(id => $(id).addEventListener("change", () => { this.clearOpeningSelections(); this.refreshSetupPlayers(); }));
+    $("openingStriker").addEventListener("change", () => this.refreshSetupPlayers());
+    $("setupLeague").onchange = () => this.onSetupLeagueChange();
+    $("saveScheduleBtn").onclick = () => this.runOnce("saveSchedule", "saveScheduleBtn", () => this.saveScheduleOnly());
     $("startMatchBtn").onclick = () => this.runOnce("startMatch", "startMatchBtn", () => this.startMatch());
+    $("commentaryMode").onchange = () => { this.state.commentaryMode = $("commentaryMode").value; if (this.state.matchId) this.saveAll(false); };
     $("copyLinkBtn").onclick = () => this.copyPublicLink();
     $("openUserBtn").onclick = () => window.open(this.publicLink(), "_blank");
     document.querySelectorAll(".run-grid button").forEach(b => b.onclick = () => this.scoreBall(b.dataset.custom ? "custom" : Number(b.textContent)));
@@ -151,6 +160,8 @@ window.app = {
     if ($("loadLeagueBtn")) $("loadLeagueBtn").onclick = () => this.loadSelectedLeagueForEdit();
     if ($("newLeagueBtn")) $("newLeagueBtn").onclick = () => this.newLeagueEditor();
     if ($("deleteLeagueBtn")) $("deleteLeagueBtn").onclick = () => this.runOnce("deleteLeague", "deleteLeagueBtn", () => this.deleteSelectedLeague());
+    if ($("publicLeagueTabsBtn")) $("publicLeagueTabsBtn").onclick = () => this.togglePublicLeagueTabs();
+    this.loadPublicLeagueTabsSetting();
     $("generateScheduleBtn").onclick = () => this.runOnce("generateSchedule", "generateScheduleBtn", () => this.generateSchedule());
     if ($("autoFillPlayoffsBtn")) $("autoFillPlayoffsBtn").onclick = () => this.autoFillPlayoffs();
     $("saveLeagueBtn").onclick = () => this.runOnce("saveLeague", "saveLeagueBtn", () => this.saveLeagueForm());
@@ -158,6 +169,8 @@ window.app = {
     this.bindPicker();
     this.bindWicketModal();
     this.bindInningsModal();
+    this.bindInningsBreakModal();
+    this.setSetupMode("schedule");
   },
 
   async runOnce(key, buttonId, fn) {
@@ -192,6 +205,42 @@ window.app = {
     playoffToggle.closest("label")?.after(label);
   },
 
+  updatePublicLeagueTabsButton() {
+    const checked = $("publicLeagueTabs")?.checked !== false;
+    const btn = $("publicLeagueTabsBtn");
+    if (!btn) return;
+    btn.textContent = `User League & Points: ${checked ? "On" : "Off"}`;
+    btn.classList.toggle("on", checked);
+    btn.classList.toggle("off", !checked);
+    if (!checked) $("leagueEditor")?.classList.add("hidden");
+  },
+  loadPublicLeagueTabsSetting() {
+    const saved = localStorage.getItem(PUBLIC_LEAGUE_TABS_KEY);
+    if (saved !== null && $("publicLeagueTabs")) $("publicLeagueTabs").checked = saved !== "off";
+    this.updatePublicLeagueTabsButton();
+  },
+  async togglePublicLeagueTabs() {
+    const input = $("publicLeagueTabs");
+    if (!input) return;
+    input.checked = !input.checked;
+    localStorage.setItem(PUBLIC_LEAGUE_TABS_KEY, input.checked ? "on" : "off");
+    this.updatePublicLeagueTabsButton();
+    if (input.checked) this.openLeagueEditor(this.editingLeagueId ? "Edit League" : "Create League");
+    try { await savePublicSettings({ showPublicLeague: input.checked }); } catch (error) { console.warn("Public settings save failed", error); }
+    const id = this.editingLeagueId || $("leagueManageSelect")?.value || this.state.league?.leagueId || "";
+    const league = this.leagues.find(l => l.leagueId === id) || (this.state.league?.leagueId === id ? this.state.league : null);
+    if (league?.leagueId) {
+      const updated = { ...league, showPublicLeague: input.checked };
+      try { await saveLeague(updated); } catch (error) { console.warn("League display setting save failed", error); }
+    }
+    this.state.showPublicLeague = input.checked;
+    if (this.state.matchId) {
+      this.state.league = { ...(this.state.league || league || {}), showPublicLeague: input.checked };
+      await this.saveAll(true);
+    }
+    this.toast(`User League & Points ${input.checked ? "enabled" : "disabled"}.`);
+  },
+
   async login() {
     $("loginMessage").textContent = "";
     try {
@@ -212,6 +261,7 @@ window.app = {
     listenTeams((teams) => { this.teams = teams; this.renderTeams(); this.fillTeamSelectors(); this.renderLeagueTeamChecks(); }, e => this.toast(e.message, true));
     listenLeagues((leagues) => { this.leagues = leagues; this.fillLeagueSelectors(); this.renderLeagueSchedule(); }, e => this.toast(e.message, true));
     listenCompletedMatches((rows) => { this.completed = rows; this.renderHistory(); }, e => this.toast(e.message, true));
+    listenScheduledMatches((rows) => { this.scheduled = rows; this.renderHistory(); }, e => this.toast(e.message, true));
     this.restoreActiveMatch();
     this.render();
   },
@@ -275,6 +325,7 @@ window.app = {
     if (!saved) return false;
     this.state = normalizeState(saved.state);
     this.currentMatchId = this.state.matchId;
+    this.needsSetupSync = true;
     this.setSync("Recovered local live match backup");
     return true;
   },
@@ -284,10 +335,11 @@ window.app = {
     if (!saved) return this.toast("No recoverable match backup found.", true);
     this.state = normalizeState(saved.state);
     this.currentMatchId = this.state.matchId;
-    this.openPage("live");
+    this.needsSetupSync = true;
+    this.openPage(this.state.status === "scheduled" ? "setup" : "live");
     this.render();
     await this.saveAll(true);
-    this.toast("Match restored from the saved backup.");
+    this.toast(this.state.status === "scheduled" ? "Scheduled setup restored." : "Match restored from the saved backup.");
   },
 
   openPage(page) {
@@ -303,13 +355,71 @@ window.app = {
     ["teamASelect", "teamBSelect", "tossWinner"].forEach(id => $(id).innerHTML = `<option value="">Select</option>${opts}`);
     if (this.teams[0] && !$("teamASelect").value) $("teamASelect").value = this.teams[0].teamId;
     if (this.teams[1] && !$("teamBSelect").value) $("teamBSelect").value = this.teams[1].teamId;
-    $("tossWinner").value = $("teamASelect").value;
+    $("tossWinner").value = "";
     this.refreshSetupPlayers();
+    this.syncSetupFormFromState();
+  },
+
+  clearOpeningSelections() {
+    ["openingStriker", "openingNonStriker", "openingBowler"].forEach(id => { if ($(id)) $(id).value = ""; });
+  },
+
+  setSetupMode(mode = "schedule") {
+    this.state.setupMode = mode;
+    document.querySelectorAll("input[name='setupMode']").forEach(r => { r.checked = r.value === mode; });
+    document.querySelectorAll(".live-only").forEach(el => el.classList.toggle("hidden", mode !== "live"));
+    $("saveScheduleBtn")?.classList.toggle("hidden", mode !== "schedule");
+    $("startMatchBtn")?.classList.toggle("hidden", mode !== "live");
+    if (mode !== "live") {
+      if ($("tossWinner")) $("tossWinner").value = "";
+      this.clearOpeningSelections();
+    }
   },
 
   fillLeagueSelectors() {
     $("setupLeague").innerHTML = `<option value="">No League</option>` + this.leagues.map(l => `<option value="${l.leagueId}">${this.safe(l.name)}</option>`).join("");
     if ($("leagueManageSelect")) $("leagueManageSelect").innerHTML = `<option value="">Select league to edit</option>` + this.leagues.map(l => `<option value="${l.leagueId}">${this.safe(l.name)}${l.season ? " - " + this.safe(l.season) : ""}</option>`).join("");
+    this.syncSetupFormFromState();
+  },
+
+  onSetupLeagueChange() {
+    this.pendingFixture = null;
+    this.refreshSetupPlayers();
+  },
+
+  syncSetupFormFromState(force = false) {
+    if (!force && !this.needsSetupSync) return;
+    const s = this.state || {};
+    if (!s.matchId) return;
+    if ($("setupLeague")) $("setupLeague").value = s.leagueId || "";
+    if ($("teamASelect") && s.teamA?.teamId) $("teamASelect").value = s.teamA.teamId;
+    if ($("teamBSelect") && s.teamB?.teamId) $("teamBSelect").value = s.teamB.teamId;
+    if ($("venue")) $("venue").value = s.venue || "";
+    if ($("matchDate")) $("matchDate").value = s.matchDate || "";
+    if ($("matchTime")) $("matchTime").value = s.matchTime || s.liveControl?.displayTime || "";
+    if ($("totalOvers")) $("totalOvers").value = Number(s.totalOvers || 20);
+    if ($("matchType")) $("matchType").value = s.matchType || "T20";
+    if ($("commentaryMode")) $("commentaryMode").value = s.commentaryMode || "en";
+    if ($("followLink")) $("followLink").value = s.followLink || "";
+    this.setSetupMode(s.liveStarted ? "live" : (s.setupMode || "schedule"));
+    if ($("tossDecision")) $("tossDecision").value = s.tossDecision || "bat";
+    this.refreshSetupPlayers();
+    if ($("tossWinner")) $("tossWinner").value = this.teamByNameValue(s.tossWinner) || "";
+    this.refreshSetupPlayers();
+    if ($("openingStriker") && s.bat1?.playerId) {
+      $("openingStriker").value = s.bat1.playerId;
+      this.refreshSetupPlayers();
+    }
+    if ($("openingNonStriker") && s.bat2?.playerId) $("openingNonStriker").value = s.bat2.playerId;
+    if ($("openingBowler") && s.bowler?.playerId) $("openingBowler").value = s.bowler.playerId;
+    const teamSynced = (!s.teamA?.teamId || $("teamASelect")?.value === s.teamA.teamId) && (!s.teamB?.teamId || $("teamBSelect")?.value === s.teamB.teamId);
+    const leagueSynced = !s.leagueId || $("setupLeague")?.value === s.leagueId;
+    if (teamSynced && leagueSynced) this.needsSetupSync = false;
+  },
+
+  teamByNameValue(name) {
+    if (!name) return "";
+    return this.teams.find(t => t.name === name)?.teamId || "";
   },
 
   async refreshSetupPlayers() {
@@ -321,9 +431,9 @@ window.app = {
     const tossSelect = $("tossWinner");
     const selectedTeams = [teamA, teamB].filter(Boolean);
     const previousToss = tossSelect.value;
-    tossSelect.innerHTML = selectedTeams.map(t => `<option value="${t.teamId}">${this.safe(t.name)}</option>`).join("");
+    tossSelect.innerHTML = `<option value="">Select Toss Winner</option>` + selectedTeams.map(t => `<option value="${t.teamId}">${this.safe(t.name)}</option>`).join("");
     if (selectedTeams.some(t => t.teamId === previousToss)) tossSelect.value = previousToss;
-    else if (teamA) tossSelect.value = teamA.teamId;
+    else tossSelect.value = "";
 
     const tossWinnerId = tossSelect.value || teamA?.teamId || "";
     const tossTeam = this.teamById(tossWinnerId);
@@ -336,7 +446,7 @@ window.app = {
     const fill = (id, list, keepValue = "") => {
       const el = $(id);
       const oldVal = keepValue || el.value;
-      el.innerHTML = list.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
+      el.innerHTML = `<option value="">Select</option>` + list.map(p => `<option value="${p.playerId}">${this.safe(p.name)}</option>`).join("");
       if (list.some(p => p.playerId === oldVal)) el.value = oldVal;
     };
 
@@ -364,24 +474,28 @@ window.app = {
     return `match_${todayKey()}_${String(this.matchCounter).padStart(3, "0")}_${Date.now()}`;
   },
 
-  async startMatch() {
+  setupTeamsAndLeague() {
     const teamA = this.teamById($("teamASelect").value);
     const teamB = this.teamById($("teamBSelect").value);
-    if (!teamA || !teamB || teamA.teamId === teamB.teamId) return this.toast("Select two different teams.", true);
-    const tossTeam = this.teamById($("tossWinner").value) || teamA;
-    if (![teamA.teamId, teamB.teamId].includes(tossTeam.teamId)) return this.toast("Toss winner must be Team A or Team B.", true);
-    const otherTeam = tossTeam.teamId === teamA.teamId ? teamB : teamA;
-    const batting = $("tossDecision").value === "bat" ? tossTeam : otherTeam;
-    const bowling = $("tossDecision").value === "bat" ? otherTeam : tossTeam;
+    if (!teamA || !teamB || teamA.teamId === teamB.teamId) {
+      this.toast("Select two different teams.", true);
+      return null;
+    }
     const totalOvers = Number($("totalOvers").value || 0);
-    if (!Number.isFinite(totalOvers) || totalOvers <= 0) return this.toast("Total overs must be at least 1.", true);
-    const striker = this.playerById(batting, $("openingStriker").value);
-    const nonStriker = this.playerById(batting, $("openingNonStriker").value);
-    const bowler = this.playerById(bowling, $("openingBowler").value);
-    if (!striker || !nonStriker || !bowler) return this.toast("Select opening striker, non-striker, and bowler.", true);
-    if (striker.playerId === nonStriker.playerId) return this.toast("Striker and non-striker must be different players.", true);
+    if (!Number.isFinite(totalOvers) || totalOvers <= 0) {
+      this.toast("Total overs must be at least 1.", true);
+      return null;
+    }
     const league = this.leagues.find(l => l.leagueId === $("setupLeague").value) || null;
-    const matchId = this.newMatchId();
+    return { teamA, teamB, league, totalOvers };
+  },
+
+  async saveScheduleOnly() {
+    const setup = this.setupTeamsAndLeague();
+    if (!setup) return;
+    if (!$("matchTime").value) return this.toast("Select match start time before saving schedule.", true);
+    const { teamA, teamB, league, totalOvers } = setup;
+    const matchId = this.state?.matchId && !this.state.matchFinished && this.state.status === "scheduled" ? this.state.matchId : this.newMatchId();
     this.currentMatchId = matchId;
     this.state = blankState();
     Object.assign(this.state, {
@@ -398,6 +512,62 @@ window.app = {
       matchDate: $("matchDate").value,
       matchTime: $("matchTime").value,
       matchType: $("matchType").value.trim() || "T20",
+      setupMode: "schedule",
+      liveStarted: false,
+      status: "scheduled",
+      liveControl: { mode: "time", note: "Scheduled Time", displayTime: $("matchTime").value },
+      teamA: this.teamObj(teamA),
+      teamB: this.teamObj(teamB),
+      totalOvers,
+      commentaryMode: $("commentaryMode")?.value || "en",
+      followLink: $("followLink").value.trim(),
+      teams: this.teamsToMap(),
+      teamInfo: this.teamInfoMap(),
+      pointsTable: league?.pointsTable || {},
+      showPublicLeague: $("publicLeagueTabs")?.checked !== false
+    });
+    this.persistActiveMatch();
+    this.needsSetupSync = true;
+    await this.saveAll(true);
+    await saveSavedLink({ matchId, name: this.state.matchTitle, url: this.publicLink(), createdAt: Date.now() });
+    $("publicLink").textContent = this.publicLink();
+    this.render();
+    this.toast("Schedule saved. Public page will show the selected time.");
+  },
+
+  async startMatch() {
+    const setup = this.setupTeamsAndLeague();
+    if (!setup) return;
+    const { teamA, teamB, league, totalOvers } = setup;
+    const tossTeam = this.teamById($("tossWinner").value);
+    if (!tossTeam) return this.toast("Select toss winner before starting match.", true);
+    if (![teamA.teamId, teamB.teamId].includes(tossTeam.teamId)) return this.toast("Toss winner must be Team A or Team B.", true);
+    const otherTeam = tossTeam.teamId === teamA.teamId ? teamB : teamA;
+    const batting = $("tossDecision").value === "bat" ? tossTeam : otherTeam;
+    const bowling = $("tossDecision").value === "bat" ? otherTeam : tossTeam;
+    const striker = this.playerById(batting, $("openingStriker").value);
+    const nonStriker = this.playerById(batting, $("openingNonStriker").value);
+    const bowler = this.playerById(bowling, $("openingBowler").value);
+    if (!striker || !nonStriker || !bowler) return this.toast("Select opening striker, non-striker, and bowler.", true);
+    if (striker.playerId === nonStriker.playerId) return this.toast("Striker and non-striker must be different players.", true);
+    const matchId = this.state?.matchId && !this.state.matchFinished && this.state.status === "scheduled" ? this.state.matchId : this.newMatchId();
+    this.currentMatchId = matchId;
+    this.state = blankState();
+    Object.assign(this.state, {
+      matchId,
+      matchTitle: `${teamA.name} vs ${teamB.name}`,
+      leagueId: league?.leagueId || "",
+      leagueName: league?.name || "",
+      league: league || null,
+      fixtureId: this.pendingFixture?.id || "",
+      leagueStage: this.pendingFixture?.stage || "",
+      leagueRound: this.pendingFixture?.round || "",
+      leagueMatchNo: this.pendingFixture?.matchNo || "",
+      venue: $("venue").value.trim(),
+      matchDate: $("matchDate").value,
+      matchTime: $("matchTime").value,
+      matchType: $("matchType").value.trim() || "T20",
+      setupMode: "live",
       liveStarted: true,
       status: "live",
       teamA: this.teamObj(teamA),
@@ -410,13 +580,15 @@ window.app = {
       tossDecision: $("tossDecision").value,
       tossText: `${tossTeam.name} chose ${$("tossDecision").value === "bat" ? "bat" : "bowl"}`,
       totalOvers,
+      commentaryMode: $("commentaryMode")?.value || this.state.commentaryMode || "en",
       bat1: normalizeBatter({ playerId: striker.playerId, name: striker.name, position: 1 }),
       bat2: normalizeBatter({ playerId: nonStriker.playerId, name: nonStriker.name, position: 2 }),
       bowler: { playerId: bowler.playerId, name: bowler.name, balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 },
       followLink: $("followLink").value.trim(),
       teams: this.teamsToMap(),
       teamInfo: this.teamInfoMap(),
-      pointsTable: league?.pointsTable || {}
+      pointsTable: league?.pointsTable || {},
+      showPublicLeague: $("publicLeagueTabs")?.checked !== false
     });
     this.pendingFixture = null;
     this.persistActiveMatch();
@@ -485,12 +657,13 @@ window.app = {
     if (batRuns === 4) { striker.f += 1; striker.fours += 1; }
     if (batRuns === 6) { striker.s += 1; striker.sixes += 1; }
 
+    const wicketInfo = this.pendingWicket ? { ...this.pendingWicket } : null;
     let label = this.ballLabel(run, { isWide, isNo, isBye, isLb, isWicket });
     if (isWicket) label = this.applyWicket(label, legal, bowlerKey, bs);
 
     s.over.push(label);
     const ballNo = overText(s.balls);
-    const text = this.commentaryText(ballNo, striker.name, bowlerKey, label, { run, isWide, isNo, isBye, isLb, isWicket });
+    const text = this.advancedCommentaryText(ballNo, striker.name, bowlerKey, label, { run, isWide, isNo, isBye, isLb, isWicket, batRuns, totalRuns, extraRuns, wicketInfo });
     s.commentary.unshift({ ball: ballNo, text, time: new Date().toLocaleTimeString() });
     s.recentBalls.unshift({ ball: ballNo, label, text, score: `${s.runs}/${s.wkts} (${overText(s.balls)})` });
     s.recentBalls = s.recentBalls.slice(0, 20);
@@ -515,12 +688,8 @@ window.app = {
 
     if (s.inningNumber === 1 && inningsOver) {
       this.finishOver(true);
-      const switched = await this.askSwitchInnings();
-      if (!switched) {
-        this.render();
-        await this.saveAll(true);
-        return;
-      }
+      await this.offerInningsBreakOrContinue();
+      return;
     } else if (s.inningNumber > 1 && (chaseComplete || inningsOver)) {
       this.finishOver(true);
       if (this.isSuperOverActive()) await this.finishSuperOverInnings();
@@ -596,7 +765,11 @@ window.app = {
   finishOver(force = false) {
     if (!this.state.over.length) return;
     const overNo = Math.ceil(this.state.balls / 6);
+    const overRuns = this.state.over.reduce((sum, label) => sum + this.labelRuns(label), 0);
+    const overWkts = this.state.over.filter(label => /^W(?!d)|wicket/i.test(String(label))).length;
     this.state.overSummary.unshift({ overNo, bowler: this.state.bowler.name, timeline: [...this.state.over] });
+    const summary = this.overCommentary(overNo, overRuns, overWkts);
+    this.state.commentary.unshift({ ball: `Over ${overNo}`, text: summary, time: new Date().toLocaleTimeString(), type: "over" });
     this.state.lastOverBowler = this.state.bowler.name;
     this.state.over = [];
   },
@@ -642,9 +815,46 @@ window.app = {
     this.render(); await this.pushLive();
   },
 
-  async askSwitchInnings() {
+  async offerInningsBreakOrContinue() {
+    this.saveCurrentInnings();
+    this.state.firstInningsScore = this.state.runs;
+    this.state.firstInningsWkts = this.state.wkts;
+    this.state.firstInnings = `${this.state.runs}/${this.state.wkts} (${overText(this.state.balls)})`;
+    this.state.target = this.state.runs + 1;
+    this.state.status = "innings-break";
+    this.state.scoringLocked = true;
+    this.state.liveControl = { mode: "paused", note: "Innings Break" };
+    this.render();
+    await this.saveAll(true);
+    const action = await this.openInningsBreakModal();
+    if (action === "continue") await this.askSwitchInnings(false);
+  },
+
+  openInningsBreakModal() {
+    return new Promise(resolve => {
+      this.inningsBreakResolve = resolve;
+      $("inningsBreakText").textContent = `First innings saved: ${this.state.firstInnings}. Target ${this.state.target}.`;
+      $("inningsBreakModal").classList.add("show");
+    });
+  },
+
+  bindInningsBreakModal() {
+    $("inningsBreakBtn").onclick = () => {
+      $("inningsBreakModal").classList.remove("show");
+      if (this.inningsBreakResolve) this.inningsBreakResolve("break");
+      this.inningsBreakResolve = null;
+      this.toast("Innings break saved. Use Switch Innings when ready.");
+    };
+    $("inningsContinueBtn").onclick = () => {
+      $("inningsBreakModal").classList.remove("show");
+      if (this.inningsBreakResolve) this.inningsBreakResolve("continue");
+      this.inningsBreakResolve = null;
+    };
+  },
+
+  async askSwitchInnings(confirmStart = true) {
     if (!this.state.matchId || this.state.inningNumber > 1) { this.toast("Second innings is already active.", true); return false; }
-    if (!confirm("Save the first innings and start the second innings?")) return false;
+    if (confirmStart && !confirm("Save the first innings and start the second innings?")) return false;
     const before = clone(this.state);
     this.saveCurrentInnings();
     this.state.firstInningsScore = this.state.runs;
@@ -692,6 +902,10 @@ window.app = {
       this.state.bat1 = normalizeBatter({ playerId: s.playerId, name: s.name, position: 1 });
       this.state.bat2 = normalizeBatter({ playerId: ns.playerId, name: ns.name, position: 2 });
       this.state.bowler = this.bowlerFromStats(bo);
+      this.state.scoringLocked = false;
+      this.state.liveStarted = true;
+      this.state.status = "live";
+      this.state.liveControl = { mode: "live", note: "Live" };
       $("inningsModal").classList.remove("show");
       if (this.inningsResolve) this.inningsResolve(true);
       this.inningsResolve = null;
@@ -712,6 +926,7 @@ window.app = {
       s.winnerText = margin === 0 ? "Match Tied" : `${s.bowlingTeam.name} won by ${margin} runs`;
     }
     if (s.winnerText === "Match Tied") {
+      s.secondInnings = `${s.runs}/${s.wkts} (${overText(s.balls)})`;
       s.status = "tied";
       s.liveControl = { mode: "paused", note: "Match Tied - Super Over Available" };
       s.scoringLocked = true;
@@ -819,9 +1034,10 @@ window.app = {
     if (!this.state.matchId) return this.toast("No active match found.", true);
     if (this.state.matchFinished) return this.toast("This match is already completed.", true);
     if (!auto && Number(this.state.inningNumber || 1) < 2) return this.toast("Use Switch Innings before completing the match.", true);
-    if (!auto && !confirm("Complete this match and save it permanently?")) return;
     this.saveCurrentInnings();
     if (!this.state.winnerText) this.state.winnerText = this.deriveWinnerText();
+    const suggestedMvp = this.calculateMvp();
+    if (!auto && !confirm(`Complete this match and save it permanently?\n\nSuggested Player of Match: ${suggestedMvp || "Not available"}`)) return;
     if (this.state.winnerText === "Match Tied" && !this.state.superOver?.completed) {
       this.state.status = "tied";
       this.state.scoringLocked = true;
@@ -835,8 +1051,8 @@ window.app = {
     this.state.status = "completed";
     this.state.scoringLocked = true;
     this.state.liveControl = { mode: "paused", note: "Match Complete" };
-    this.state.secondInnings = `${this.state.runs}/${this.state.wkts} (${overText(this.state.balls)})`;
-    this.state.mvp = this.calculateMvp();
+    if (!this.state.superOver?.completed) this.state.secondInnings = `${this.state.runs}/${this.state.wkts} (${overText(this.state.balls)})`;
+    this.state.mvp = suggestedMvp;
     this.state.playerOfMatch = this.state.mvp;
     await this.updateLeagueAfterCompletion();
     const final = storePayload(this.state, this.state.matchId, this.uid);
@@ -926,7 +1142,35 @@ window.app = {
 
   calculateMvp() {
     const stats = Object.values(this.playerStatsForMatch());
-    const best = stats.sort((a, b) => ((b.runs || 0) + (b.wickets || 0) * 25) - ((a.runs || 0) + (a.wickets || 0) * 25))[0];
+    const teams = [this.state.teamA?.name, this.state.teamB?.name].filter(Boolean);
+    const winner = teams.find(team => this.state.winnerText?.includes(team)) || "";
+    const score = (p) => {
+      const runs = Number(p.runs || 0);
+      const balls = Number(p.balls || 0);
+      const wkts = Number(p.wickets || 0);
+      const bowlingBalls = Number(p.bowlingBalls || 0);
+      const bowlingRuns = Number(p.bowlingRuns || 0);
+      const sr = balls ? (runs * 100) / balls : 0;
+      const er = bowlingBalls ? (bowlingRuns * 6) / bowlingBalls : 99;
+      let value = runs + Number(p.fours || 0) + Number(p.sixes || 0) * 2 + wkts * 25;
+      if (runs >= 100) value += 20;
+      else if (runs >= 75) value += 12;
+      else if (runs >= 50) value += 8;
+      if (balls >= 10 && sr >= 160) value += 8;
+      else if (balls >= 10 && sr >= 130) value += 4;
+      else if (balls >= 15 && sr < 80) value -= 5;
+      if (wkts >= 5) value += 30;
+      else if (wkts >= 4) value += 18;
+      else if (wkts >= 3) value += 10;
+      if (bowlingBalls >= 12 && er <= 5) value += 10;
+      else if (bowlingBalls >= 12 && er <= 7) value += 5;
+      else if (bowlingBalls >= 12 && er > 10) value -= 5;
+      value += Math.min(Number(p.bowlingDots || 0), 12) * 1.5;
+      if (runs >= 25 && wkts >= 2) value += 15;
+      if (winner && p.teamName === winner) value += 8;
+      return value;
+    };
+    const best = stats.sort((a, b) => score(b) - score(a) || Number(b.runs || 0) - Number(a.runs || 0) || Number(b.wickets || 0) - Number(a.wickets || 0))[0];
     return best ? best.playerName : "";
   },
 
@@ -1103,7 +1347,153 @@ window.app = {
   clearBallTypes() { ["wide", "noball", "bye", "legbye", "wicket"].forEach(id => $(id).checked = false); this.pendingWicket = null; },
   pushUndo() { this.state.undoStack.push(clone(this.state)); if (this.state.undoStack.length > 25) this.state.undoStack.shift(); },
   async undo() { const prev = this.state.undoStack.pop(); if (!prev) return this.toast("Nothing to undo.", true); this.state = normalizeState(prev); this.render(); await this.saveAll(false); },
-  commentaryText(ballNo, batter, bowler, label, flags) { if (flags.isWicket) return `${ballNo}: ${bowler} to ${batter}, wicket! ${label}`; if (flags.isWide) return `${ballNo}: wide ball, ${label}`; if (flags.isNo) return `${ballNo}: no ball, ${label}`; return `${ballNo}: ${bowler} to ${batter}, ${label}`; },
+  labelRuns(label) {
+    const text = String(label || "");
+    const n = Number((text.match(/\d+/) || [0])[0]);
+    if (/Wd|Nb/i.test(text)) return n || 1;
+    return Number.isFinite(n) ? n : 0;
+  },
+  commentaryPick(lines, key = "") {
+    const source = `${key}|${this.state.balls}|${this.state.runs}|${this.state.wkts}|${this.state.commentary?.length || 0}`;
+    const seed = [...source].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+    return lines[seed % lines.length];
+  },
+  advancedCommentaryText(ballNo, batter, bowler, label, flags = {}) {
+    const run = Number(flags.run || 0);
+    const score = `${this.state.runs}/${this.state.wkts}`;
+    const chase = this.state.inningNumber > 1 && this.state.target ? this.chaseLine() : "";
+    const base = `${bowler} to ${batter}`;
+    const mode = this.state.commentaryMode || $("commentaryMode")?.value || "en";
+    const total = Number(flags.totalRuns ?? run ?? 0);
+    const rawType = flags.wicketInfo?.type || "Wicket";
+    const hiTypes = { Bowled: "बोल्ड", LBW: "एलबीडब्ल्यू", Caught: "कैच आउट", "Run Out": "रन आउट", Stumping: "स्टंपिंग", "Hit Wicket": "हिट विकेट", "Retired Out": "रिटायर्ड आउट", Wicket: "विकेट" };
+    const type = mode === "hi" ? (hiTypes[rawType] || rawType) : rawType;
+    const helper = flags.wicketInfo?.helper ? (mode === "hi" ? `, ${flags.wicketInfo.helper} शामिल` : `, ${flags.wicketInfo.helper} involved`) : "";
+    const packs = {
+      en: {
+        wicket: [`WICKET! ${type}${helper}. ${batter} is gone.`, `Breakthrough! ${type}${helper}, ${batter} has to walk back.`, `Huge moment. ${batter} falls by ${type}${helper}.`],
+        wide: [`Wide ball. Extra run added.`, `Sprayed down the side, called wide.`, `The line is off, wide signalled.`],
+        wideRuns: [`Wide, ${total} runs added.`, `Loose ball and ${total} wides on the board.`, `${total} added from the wide.`],
+        no: [`No ball. Free hit coming.`, `Overstepped, no ball called.`, `No ball from ${bowler}; the next one is a free hit.`],
+        noRuns: [`No ball and ${run} run${run > 1 ? "s" : ""}. Free hit coming.`, `Overstepped, and they take ${run}. Free hit next.`, `${run} off the no ball, pressure on the bowler.`],
+        bye: [`${total} bye${total > 1 ? "s" : ""}.`, `Missed by everyone, ${total} bye${total > 1 ? "s" : ""}.`, `Extras ticking along, ${total} bye${total > 1 ? "s" : ""}.`],
+        lb: [`${total} leg bye${total > 1 ? "s" : ""}.`, `Off the pad, ${total} leg bye${total > 1 ? "s" : ""}.`, `Leg bye taken, ${total} added.`],
+        six: [`SIX! Clean strike, all the way.`, `SIX! That has been launched into the stands.`, `Massive hit from ${batter}, six runs.`],
+        four: [`FOUR! Finds the gap and races away.`, `FOUR! Timed well and the outfield does the rest.`, `Boundary for ${batter}, placed perfectly.`],
+        dot: [`Dot ball. Good control from the bowler.`, `No run, tight line from ${bowler}.`, `Beaten for pace and there is no single there.`],
+        one: [`Worked away for a single.`, `Quick single taken.`, `${batter} rotates the strike.`],
+        two: [`Pushed into the gap, they come back for two.`, `Good running, two added.`, `Placed softly and they complete a couple.`],
+        three: [`Excellent running, three taken.`, `They push hard and get three.`, `Long chase in the deep, three runs.`],
+        other: [`${run} runs taken.`, `${run} added to the total.`, `They collect ${run}.`],
+        score: `Score ${score}.`
+      },
+      mix: {
+        wicket: [`WICKET! ${type}${helper}. ${batter} ko jaana padega.`, `Breakthrough! ${type}${helper}, match me twist aa gaya.`, `Bada moment, ${batter} ${type}${helper} out.`],
+        wide: [`Wide ball, extra run add hua.`, `Line miss hui, umpire ne wide diya.`, `Bowler direction se bhatak gaya, wide.`],
+        wideRuns: [`Wide, ${total} runs add hue.`, `Loose ball, ${total} wides mil gaye.`, `${total} run wide se aa gaye.`],
+        no: [`No ball. Free hit coming.`, `Overstep hua, no ball.`, `No ball by ${bowler}, ab free hit.`],
+        noRuns: [`No ball aur ${run} run${run > 1 ? "s" : ""}. Free hit coming.`, `No ball pe ${run} run bhi mil gaya.`, `${run} run no ball se, pressure badhega.`],
+        bye: [`${total} bye run.`, `Keeper miss, ${total} bye mil gaya.`, `Ball sabko beat kar gayi, ${total} bye.`],
+        lb: [`${total} leg bye run.`, `Pad se laga, ${total} leg bye.`, `Leg bye se ${total} add.`],
+        six: [`SIX! Zabardast hit, seedha bahar.`, `SIX! Badiya connection, crowd me ball.`, `${batter} ne pura shot khola, six.`],
+        four: [`FOUR! Gap mila aur boundary.`, `FOUR! Timing superb thi.`, `${batter} ne placement se four nikala.`],
+        dot: [`Dot ball. Bowler ka achha control.`, `No run, tight bowling.`, `Batter ko room nahi mila.`],
+        one: [`Single nikal liya.`, `Strike rotate kar di.`, `Soft hands se ek run.`],
+        two: [`Gap me push kiya, do run complete.`, `Achhi running, two mil gaye.`, `Dono batsman tez bhaage, two.`],
+        three: [`Achhi running, teen run mil gaye.`, `Deep me ball gayi, three complete.`, `Fitness ka kaam, teen run.`],
+        other: [`${run} runs liye.`, `${run} run add hue.`, `${run} mil gaye.`],
+        score: `Score ${score}.`
+      },
+      hi: {
+        wicket: [`विकेट! ${type}${helper}. ${batter} आउट।`, `बड़ी सफलता! ${type}${helper}, ${batter} को लौटना होगा।`, `मैच का बड़ा पल, ${batter} ${type}${helper}।`],
+        wide: [`वाइड गेंद। एक अतिरिक्त रन।`, `लाइन बाहर रही, अंपायर ने वाइड दिया।`, `वाइड से एक रन जुड़ा।`],
+        wideRuns: [`वाइड, ${total} रन जुड़े।`, `${total} रन वाइड से मिले।`, `वाइड गेंद और ${total} रन।`],
+        no: [`नो बॉल। अब फ्री हिट आएगी।`, `ओवरस्टेप हुआ, नो बॉल।`, `${bowler} से नो बॉल।`],
+        noRuns: [`नो बॉल और ${run} रन। फ्री हिट आएगी।`, `नो बॉल पर ${run} रन भी मिल गए।`, `${run} रन नो बॉल से जुड़े।`],
+        bye: [`${total} बाई रन।`, `कीपर से चूक, ${total} बाई।`, `बाई से ${total} रन जुड़े।`],
+        lb: [`${total} लेग बाई रन।`, `पैड से लगी गेंद, ${total} लेग बाई।`, `लेग बाई से ${total} रन जुड़े।`],
+        six: [`छक्का! शानदार शॉट।`, `छक्का! गेंद सीमा रेखा के पार।`, `${batter} का बड़ा शॉट, छह रन।`],
+        four: [`चौका! गैप मिला और गेंद बाउंड्री तक।`, `चौका! बहुत अच्छी टाइमिंग।`, `${batter} ने बेहतरीन चौका निकाला।`],
+        dot: [`डॉट गेंद। गेंदबाज का अच्छा नियंत्रण।`, `कोई रन नहीं।`, `बल्लेबाज को जगह नहीं मिली।`],
+        one: [`एक रन लिया।`, `सिंगल मिल गया।`, `स्ट्राइक बदली।`],
+        two: [`दो रन पूरे।`, `गैप में खेला, दो रन।`, `अच्छी दौड़ से दो रन मिले।`],
+        three: [`तीन रन मिल गए।`, `बहुत अच्छी दौड़, तीन रन।`, `गेंद डीप में गई, तीन रन।`],
+        other: [`${run} रन लिए।`, `${run} रन जुड़े।`, `${run} रन मिले।`],
+        score: `स्कोर ${score}।`
+      }
+    };
+    const pack = packs[mode] || packs.en;
+    let lines;
+    if (flags.isWicket) lines = pack.wicket;
+    else if (flags.isWide) lines = total > 1 ? pack.wideRuns : pack.wide;
+    else if (flags.isNo) lines = run ? pack.noRuns : pack.no;
+    else if (flags.isBye) lines = pack.bye;
+    else if (flags.isLb) lines = pack.lb;
+    else if (run === 6) lines = pack.six;
+    else if (run === 4) lines = pack.four;
+    else if (run === 0) lines = pack.dot;
+    else if (run === 1) lines = pack.one;
+    else if (run === 2) lines = pack.two;
+    else if (run === 3) lines = pack.three;
+    else lines = pack.other;
+    const action = this.commentaryPick(lines, `${mode}-${label}-${batter}-${bowler}`);
+    return `${ballNo}: ${base}, ${action} ${pack.score}${chase ? " " + chase : ""}`;
+  },
+
+  commentaryText(ballNo, batter, bowler, label, flags = {}) {
+    const run = Number(flags.run || 0);
+    const score = `${this.state.runs}/${this.state.wkts}`;
+    const chase = this.state.inningNumber > 1 && this.state.target ? this.chaseLine() : "";
+    const base = `${bowler} to ${batter}`;
+    const mode = this.state.commentaryMode || $("commentaryMode")?.value || "en";
+    let action = "";
+    if (flags.isWicket) {
+      const type = flags.wicketInfo?.type || "Wicket";
+      const helper = flags.wicketInfo?.helper ? `, ${flags.wicketInfo.helper} involved` : "";
+      action = mode === "hi" ? `WICKET! ${type}${helper}. ${batter} आउट हुए.` : mode === "mix" ? `WICKET! ${type}${helper}. ${batter} ko jaana padega.` : `WICKET! ${type}${helper}. ${batter} has to go.`;
+    } else if (flags.isWide) {
+      action = mode === "hi" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} रन जुड़े.` : "Wide ball. एक extra run.") : mode === "mix" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs add hue.` : "Wide ball. Extra run added.") : (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs added.` : "Wide ball. Extra run added.");
+    } else if (flags.isNo) {
+      action = mode === "hi" ? (run ? `No ball aur ${run} रन. Free hit आएगी.` : "No ball. Free hit आएगी.") : mode === "mix" ? (run ? `No ball aur ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.") : (run ? `No ball and ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.");
+    } else if (flags.isBye) {
+      action = mode === "hi" ? `${flags.totalRuns} bye रन.` : `${flags.totalRuns} bye${flags.totalRuns > 1 ? "s" : ""}.`;
+    } else if (flags.isLb) {
+      action = mode === "hi" ? `${flags.totalRuns} leg bye रन.` : `${flags.totalRuns} leg bye${flags.totalRuns > 1 ? "s" : ""}.`;
+    } else if (run === 6) {
+      action = mode === "hi" ? "SIX! शानदार शॉट, गेंद सीमा रेखा के पार." : mode === "mix" ? "SIX! Zabardast hit, seedha boundary ke bahar." : "SIX! Clean strike, all the way.";
+    } else if (run === 4) {
+      action = mode === "hi" ? "FOUR! गैप मिला और गेंद तेजी से बाउंड्री तक." : mode === "mix" ? "FOUR! Gap mila aur ball boundary tak gayi." : "FOUR! Finds the gap and races away.";
+    } else if (run === 0) {
+      action = mode === "hi" ? "Dot ball. गेंदबाज का अच्छा नियंत्रण." : mode === "mix" ? "Dot ball. Bowler ka achha control." : "Dot ball. Good control from the bowler.";
+    } else if (run === 1) {
+      action = mode === "hi" ? "एक रन लिया." : mode === "mix" ? "Single nikal liya." : "Worked away for a single.";
+    } else if (run === 2) {
+      action = mode === "hi" ? "गैप में खेला, दो रन पूरे." : mode === "mix" ? "Gap me push kiya, do run complete." : "Pushed into the gap, they come back for two.";
+    } else if (run === 3) {
+      action = mode === "hi" ? "बेहतरीन running, तीन रन." : mode === "mix" ? "Achhi running, teen run mil gaye." : "Excellent running, three taken.";
+    } else {
+      action = mode === "hi" ? `${run} रन लिए.` : `${run} runs taken.`;
+    }
+    const scoreText = mode === "hi" ? `स्कोर ${score}.` : `Score ${score}.`;
+    return `${ballNo}: ${base}, ${action} ${scoreText}${chase ? " " + chase : ""}`;
+  },
+  chaseLine() {
+    const need = Math.max(Number(this.state.target || 0) - Number(this.state.runs || 0), 0);
+    const ballsLeft = Math.max(Number(this.state.totalOvers || 20) * 6 - Number(this.state.balls || 0), 0);
+    if (!need) return "Target achieved.";
+    return `Need ${need} from ${ballsLeft} balls.`;
+  },
+  overCommentary(overNo, runs, wickets) {
+    const score = `${this.state.runs}/${this.state.wkts}`;
+    const wicketText = wickets ? `${wickets} wicket${wickets > 1 ? "s" : ""}` : "no wickets";
+    let note = "Steady over.";
+    if (wickets >= 2) note = "Major shift in momentum.";
+    else if (wickets === 1) note = "Breakthrough over.";
+    else if (runs >= 16) note = "Big over for the batting side.";
+    else if (runs <= 3) note = "Tidy over from the bowler.";
+    const chase = this.state.inningNumber > 1 && this.state.target ? ` ${this.chaseLine()}` : "";
+    return `End of over ${overNo}: ${runs} run${runs === 1 ? "" : "s"}, ${wicketText}. Score ${score}. ${note}${chase}`;
+  },
 
   bindWicketModal() {
     document.querySelectorAll(".wicket-types button").forEach(b => b.onclick = () => { document.querySelectorAll(".wicket-types button").forEach(x => x.classList.remove("active")); b.classList.add("active"); this.refreshWicketOutVisibility(); });
@@ -1198,13 +1588,13 @@ window.app = {
     const s = this.state = normalizeState(this.state);
     $("topTitle").textContent = s.matchTitle || "Cricket Admin";
     $("topSub").textContent = s.matchId || "No match started";
-    $("topStatus").textContent = s.matchFinished ? "COMPLETE" : (s.liveStarted ? (s.liveControl.mode || "LIVE").toUpperCase() : "NO LIVE");
+    $("topStatus").textContent = s.matchFinished ? "COMPLETE" : (s.status === "scheduled" ? "SCHEDULED" : (s.liveStarted ? (s.liveControl.mode || "LIVE").toUpperCase() : "NO LIVE"));
     $("topStatus").className = `status-pill ${s.matchFinished ? "complete" : (s.liveStarted ? "live" : "")}`;
     $("runs").textContent = s.runs; $("wkts").textContent = s.wkts; $("overs").textContent = overText(s.balls);
     $("crr").textContent = s.balls ? (s.runs / (s.balls / 6)).toFixed(2) : "0.00";
     const remBalls = Math.max(Number(s.totalOvers || 20) * 6 - s.balls, 0); const need = s.target ? Math.max(s.target - s.runs, 0) : null;
     $("targetBox").textContent = s.target || "-"; $("needBox").textContent = need ?? "-"; $("rrrBox").textContent = need == null ? "-" : (remBalls ? ((need * 6) / remBalls).toFixed(2) : "0.00"); $("partnershipBox").textContent = `${s.partnershipRuns} (${s.partnershipBalls})`;
-    $("batsmanRows").innerHTML = [s.bat1, s.bat2].map((b, i) => `<tr><td><b>${this.safe(b.name)}</b> ${s.striker === i + 1 ? "*" : ""}</td><td>${b.r}</td><td>${b.b}</td><td>${b.f}</td><td>${b.s}</td><td>${calcSR(b.r, b.b)}</td></tr>`).join("");
+    $("batsmanRows").innerHTML = [s.bat1, s.bat2].map((b, i) => `<tr><td><b>${this.safe(b.name)}</b> ${(s.striker === i + 1 && !b.retired) ? "*" : ""}</td><td>${b.r}</td><td>${b.b}</td><td>${b.f}</td><td>${b.s}</td><td>${calcSR(b.r, b.b)}</td></tr>`).join("");
     $("bowlerRows").innerHTML = `<tr><td><b>${this.safe(s.bowler.name)}</b></td><td>${overText(s.bowler.balls)}</td><td>${s.bowler.r}</td><td>${s.bowler.w}</td><td>${calcER(s.bowler.r, s.bowler.balls)}</td></tr>`;
     $("thisOver").innerHTML = s.over.length ? s.over.map(x => `<span class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0, 3))}</span>`).join("") : "<span class='item'>No balls</span>";
     $("recentBalls").innerHTML = s.recentBalls.length ? s.recentBalls.map(x => `<div class="item"><b>${this.safe(x.label)}</b> ${this.safe(x.score)}<br><small>${this.safe(x.text)}</small></div>`).join("") : "<div class='item'>No recent balls</div>";
@@ -1212,6 +1602,11 @@ window.app = {
     $("fowList").innerHTML = s.fallOfWickets.length ? s.fallOfWickets.map((x, i) => `<div class="item">${i + 1}. ${this.safe(x)}</div>`).join("") : "<div class='item'>No wickets</div>";
     $("commentaryList").innerHTML = s.commentary.length ? s.commentary.slice(0, 30).map(c => `<div class="item"><b>${this.safe(c.ball)}</b> ${this.safe(c.text)}</div>`).join("") : "<div class='item'>No commentary</div>";
     document.querySelectorAll(".mode").forEach(b => b.classList.toggle("active", b.dataset.mode === s.liveControl.mode));
+    const scoreDisabled = !s.matchId || !s.liveStarted || s.matchFinished || s.scoringLocked || s.status === "scheduled";
+    document.querySelectorAll(".run-grid button").forEach(b => { b.disabled = scoreDisabled; b.classList.toggle("disabled", scoreDisabled); });
+    ["wide", "noball", "bye", "legbye", "wicket"].forEach(id => { if ($(id)) $(id).disabled = scoreDisabled; });
+    ["swapBtn", "retireBtn", "changeBatsmanBtn", "changeBowlerBtn"].forEach(id => { if ($(id)) $(id).disabled = scoreDisabled; });
+    if ($("switchInningsBtn")) $("switchInningsBtn").disabled = !s.matchId || s.matchFinished || Number(s.inningNumber || 1) > 1 || s.status === "scheduled";
     if ($("startSuperOverBtn")) $("startSuperOverBtn").classList.toggle("hidden", !(s.status === "tied" || s.winnerText === "Match Tied"));
     if (s.matchId) {
       $("publicLink").textContent = this.publicLink();
@@ -1264,6 +1659,10 @@ window.app = {
   teamOptions(selected = "") { return `<option value="">TBA</option>` + this.teams.map(t => `<option value="${t.teamId}" ${t.teamId === selected ? "selected" : ""}>${this.safe(t.name)}</option>`).join(""); },
 
   openLeagueEditor(title = "Create League") {
+    if ($("publicLeagueTabs")?.checked === false) {
+      $("leagueEditor")?.classList.add("hidden");
+      return;
+    }
     $("leagueEditor")?.classList.remove("hidden");
     if ($("leagueEditorTitle")) $("leagueEditorTitle").textContent = title;
   },
@@ -1277,6 +1676,7 @@ window.app = {
     $("leagueFormat").value = "single";
     $("includeEliminator").value = "on";
     $("iplPlayoffs").checked = true;
+    this.updatePublicLeagueTabsButton();
     document.querySelectorAll("#leagueTeamChecks input").forEach(x => x.checked = false);
     this.openLeagueEditor("Create League");
     this.renderLeagueSchedule();
@@ -1297,6 +1697,9 @@ window.app = {
     $("leagueFormat").value = league.format || "single";
     $("includeEliminator").value = league.includeEliminator === false ? "off" : "on";
     $("iplPlayoffs").checked = league.playoffs !== false;
+    $("publicLeagueTabs").checked = league.showPublicLeague !== false;
+    localStorage.setItem(PUBLIC_LEAGUE_TABS_KEY, $("publicLeagueTabs").checked ? "on" : "off");
+    this.updatePublicLeagueTabsButton();
     const ids = new Set((league.teams || []).map(t => t.teamId).filter(Boolean));
     document.querySelectorAll("#leagueTeamChecks input").forEach(x => x.checked = ids.has(x.value));
     this.openLeagueEditor("Edit League");
@@ -1346,9 +1749,10 @@ window.app = {
   async saveLeagueForm() {
     const selectedTeams = [...document.querySelectorAll("#leagueTeamChecks input:checked")].map(x => this.teamObj(this.teamById(x.value))).filter(Boolean);
     const existing = (this.editingLeagueId && this.leagues.find(l => l.leagueId === this.editingLeagueId)) || (this.state.league?.leagueId ? this.state.league : null);
-    const league = { leagueId: this.editingLeagueId || existing?.leagueId || undefined, name: $("leagueName").value.trim() || existing?.name || "Cricket League", shortName: $("leagueShort").value.trim(), season: $("leagueSeason").value.trim(), logo: $("leagueLogo").value.trim(), defaultOvers: Number($("leagueOvers").value || 20), format: $("leagueFormat").value, playoffs: $("iplPlayoffs").checked, includeEliminator: this.includeEliminatorOn(), teams: selectedTeams.length ? selectedTeams : (existing?.teams || []), schedule: this.draftSchedule || existing?.schedule || [], pointsTable: existing?.pointsTable || this.state.pointsTable || {}, pointsAppliedMatchIds: existing?.pointsAppliedMatchIds || this.state.league?.pointsAppliedMatchIds || {}, status: "active" };
+    const league = { leagueId: this.editingLeagueId || existing?.leagueId || undefined, name: $("leagueName").value.trim() || existing?.name || "Cricket League", shortName: $("leagueShort").value.trim(), season: $("leagueSeason").value.trim(), logo: $("leagueLogo").value.trim(), defaultOvers: Number($("leagueOvers").value || 20), format: $("leagueFormat").value, playoffs: $("iplPlayoffs").checked, includeEliminator: this.includeEliminatorOn(), showPublicLeague: $("publicLeagueTabs").checked, teams: selectedTeams.length ? selectedTeams : (existing?.teams || []), schedule: this.draftSchedule || existing?.schedule || [], pointsTable: existing?.pointsTable || this.state.pointsTable || {}, pointsAppliedMatchIds: existing?.pointsAppliedMatchIds || this.state.league?.pointsAppliedMatchIds || {}, status: "active" };
     await saveLeague(league);
     this.state.league = league;
+    this.state.showPublicLeague = $("publicLeagueTabs").checked;
     this.draftSchedule = league.schedule;
     if (this.state.matchId && this.state.leagueId === league.leagueId && !this.state.matchFinished) {
       this.state.pointsTable = league.pointsTable || this.state.pointsTable || {};
@@ -1362,6 +1766,7 @@ window.app = {
     const hasData = this.currentSchedule().length || ["leagueName", "leagueShort", "leagueSeason", "leagueLogo"].some(id => $(id).value.trim());
     if (hasData && !confirm("Clear the draft form? The saved Firebase league will not change until you save.")) return;
     ["leagueName", "leagueShort", "leagueSeason", "leagueLogo"].forEach(id => $(id).value = "");
+    this.updatePublicLeagueTabsButton();
     this.editingLeagueId = "";
     this.editingFixtureIndex = null;
     this.draftSchedule = [];
@@ -1432,12 +1837,14 @@ window.app = {
     fixture.result = "No Result";
   },
 
-  useFixtureSetup(index) {
-    const fixture = this.currentSchedule()[index];
+  useFixtureSetup(index, fromSetupSelect = false) {
+    const selectedLeague = this.leagues.find(l => l.leagueId === $("setupLeague")?.value);
+    const schedule = Array.isArray(selectedLeague?.schedule) ? selectedLeague.schedule : this.currentSchedule();
+    const fixture = schedule[index];
     if (!fixture) return;
     const a = fixture.teamA?.teamId, b = fixture.teamB?.teamId;
     if (!a || !b) return this.toast("Select both fixture teams before loading setup.", true);
-    const league = this.currentLeague();
+    const league = selectedLeague || this.currentLeague();
     if (league?.leagueId) $("setupLeague").value = league.leagueId;
     $("teamASelect").value = a;
     $("teamBSelect").value = b;
@@ -1448,8 +1855,13 @@ window.app = {
     $("matchType").value = fixture.stage || league?.shortName || "T20";
     this.pendingFixture = { id: fixture.id, index, stage: fixture.stage || "", round: fixture.round || "", matchNo: fixture.matchNo || "" };
     this.refreshSetupPlayers();
+    $("tossWinner").value = "";
+    $("openingStriker").value = "";
+    this.refreshSetupPlayers();
+    $("openingNonStriker").value = "";
+    $("openingBowler").value = "";
     this.openPage("setup");
-    this.toast("Fixture loaded into match setup.");
+    this.toast(fromSetupSelect ? "Schedule loaded. Select toss and players when match starts." : "Fixture loaded into match setup.");
   },
 
   autoFillPlayoffs() {
@@ -1493,9 +1905,40 @@ window.app = {
 
   renderHistory() {
     const saved = this.getActiveBackup();
-    const continueCard = saved ? `<div class="card-mini" style="border-color:#f59e0b;background:#fffbeb"><b>Unfinished Match Backup</b><br><small>${this.safe(saved.state.matchTitle || saved.matchId)}</small><p>${this.safe(saved.state.battingTeam?.name || "-")} ${Number(saved.state.runs || 0)}/${Number(saved.state.wkts || 0)} (${overText(saved.state.balls || 0)})</p><div class="actions"><button class="btn" onclick="app.continueRecoveredMatch()">Continue Match</button><button class="btn light" onclick="window.open('user.html?match=${saved.state.matchId}','_blank')">Open User</button></div></div>` : "";
+    const continueCard = saved ? this.historyContinueCard(saved) : "";
+    const savedId = saved?.state?.matchId || "";
+    const scheduledHtml = (this.scheduled || [])
+      .filter(m => m.matchId && m.matchId !== savedId)
+      .map(m => this.scheduledHistoryCard(m))
+      .join("");
     const historyHtml = this.completed.map(m => `<div class="card-mini"><b>${this.safe(m.matchTitle || m.title || "Match")}</b><br><small>${this.safe(m.leagueName || "")}</small><p>${this.safe(m.firstInnings || "")} ${m.secondInnings ? " | " + this.safe(m.secondInnings) : ""}</p><b>${this.safe(m.winnerText || "-")}</b><div class="actions"><button class="btn light" onclick="window.open('user.html?match=${m.matchId}','_blank')">View</button><button class="btn" onclick="window.open('scorecard-download.html?match=${m.matchId}','_blank')">PDF</button><button class="btn warn" onclick="app.editManOfMatch('${m.matchId}')">Edit MVP</button><button class="btn danger" onclick="app.deleteHistoryMatch('${m.matchId}')">Delete</button></div></div>`).join("");
-    $("historyList").innerHTML = continueCard + (historyHtml || "<div class='item'>No completed matches</div>");
+    $("historyList").innerHTML = continueCard + scheduledHtml + (historyHtml || "<div class='item'>No completed matches</div>");
+  },
+
+  historyContinueCard(saved) {
+    const s = saved.state || {};
+    const scheduled = String(s.status || "").toLowerCase() === "scheduled";
+    const detail = scheduled
+      ? ([s.matchDate, s.matchTime].filter(Boolean).join(" ") || "Schedule saved")
+      : `${this.safe(s.battingTeam?.name || "-")} ${Number(s.runs || 0)}/${Number(s.wkts || 0)} (${overText(s.balls || 0)})`;
+    return `<div class="card-mini" style="border-color:#f59e0b;background:#fffbeb"><b>${scheduled ? "Scheduled Match Setup" : "Unfinished Match Backup"}</b><br><small>${this.safe(s.matchTitle || saved.matchId)}</small><p>${this.safe(detail)}</p><div class="actions"><button class="btn" onclick="app.continueRecoveredMatch()">${scheduled ? "Continue Setup" : "Continue Match"}</button><button class="btn light" onclick="window.open('user.html?match=${s.matchId}','_blank')">Open User</button></div></div>`;
+  },
+
+  scheduledHistoryCard(match) {
+    const detail = [match.matchDate, match.matchTime].filter(Boolean).join(" ") || "Schedule saved";
+    return `<div class="card-mini" style="border-color:#0ea5e9;background:#f0f9ff"><b>Scheduled Match Setup</b><br><small>${this.safe(match.matchTitle || match.title || match.matchId)}</small><p>${this.safe(detail)}</p><div class="actions"><button class="btn" onclick="app.continueScheduledMatch('${this.safe(match.matchId)}')">Continue Setup</button><button class="btn light" onclick="window.open('user.html?match=${this.safe(match.matchId)}','_blank')">Open User</button></div></div>`;
+  },
+
+  async continueScheduledMatch(matchId) {
+    const match = (this.scheduled || []).find(m => m.matchId === matchId);
+    if (!match) return this.toast("Scheduled match not found.", true);
+    this.state = normalizeState({ ...match, setupMode: "schedule", status: "scheduled", liveStarted: false });
+    this.currentMatchId = this.state.matchId;
+    this.needsSetupSync = true;
+    this.persistActiveMatch();
+    this.openPage("setup");
+    await this.saveAll(true);
+    this.toast("Scheduled setup loaded from Firebase.");
   },
 
   async editManOfMatch(matchId) {

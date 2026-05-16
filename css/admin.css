@@ -31,12 +31,19 @@ body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:#f3f
  input:focus,select:focus,textarea:focus{outline:none;border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,.13)}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.setup-mode{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.setup-mode label{margin:0;text-transform:none;display:flex;align-items:center;gap:7px;border:1px solid #d8e1ec;border-radius:999px;padding:9px 12px;background:#f8fafc;color:#334155;cursor:pointer}
+.setup-mode input{width:auto}
+.setup-mode label:has(input:checked){background:#0f766e;color:#fff;border-color:#0f766e}
 .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .btn{border:0;border-radius:10px;background:#e8eef5;color:#1f2f46;padding:10px 13px;font-weight:900;cursor:pointer}
 .btn.primary,.btn:hover{background:#0f766e;color:#fff}
 .btn.warn{background:#b45309;color:#fff}
 .btn.danger{background:#b91c1c;color:#fff}
 .btn.light{background:#eef3f8;color:#334155}
+.btn.toggle{width:100%;margin:10px 0 4px;border:1px solid #cfd9e6;text-align:left}
+.btn.toggle.on{background:#ecfdf5;color:#0f766e;border-color:#99f6e4}
+.btn.toggle.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca}
 .message{margin-top:10px;color:#b91c1c;font-size:13px}
 .link-box{padding:12px;border:1px dashed #94a3b8;border-radius:12px;background:#f8fafc;word-break:break-all;color:#334155}
 .setup-preview{display:grid;gap:8px;color:#334155}
@@ -59,6 +66,8 @@ body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:#f3f
 .extras label{margin:0;text-transform:none;display:flex;align-items:center;gap:6px;color:#334155}
 .extras input{width:auto}.run-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:8px;margin:12px 0}
 .run-grid button{min-height:56px;font-size:20px}
+.run-grid button:disabled,.actions button:disabled,.extras input:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.35)}
+.run-grid button:disabled{background:#eef2f7!important;color:#94a3b8!important;border-color:#dbe4ee!important}
 .run-grid button:nth-child(5),.run-grid button:nth-child(7){background:#ecfdf5;color:#0f766e;border-color:#99f6e4}
 .ball-strip{display:flex;gap:7px;flex-wrap:wrap}
 .ball{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:30px;border-radius:999px;background:#eef3f8;font-weight:900}
