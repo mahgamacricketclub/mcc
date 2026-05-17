@@ -187,7 +187,8 @@ window.app = {
       const striker = m.striker === 1 ? m.bat1 : m.bat2;
       const non = m.striker === 1 ? m.bat2 : m.bat1;
       $("battingInfo").innerHTML = `<b>${this.safe(striker.name)}</b> ${striker.r}/${striker.b} 🏏<br>${this.safe(non.name)} ${non.r}/${non.b}`;
-      const liveBowler = m.bowlerStats?.[m.bowler.name] ? { ...m.bowler, ...m.bowlerStats[m.bowler.name], r: m.bowlerStats[m.bowler.name].runs ?? m.bowler.r, w: m.bowlerStats[m.bowler.name].wkts ?? m.bowler.w } : m.bowler;
+      const liveBowlerStat = this.bowlerStat(m, m.bowler);
+      const liveBowler = liveBowlerStat ? { ...m.bowler, ...liveBowlerStat, name: m.bowler.name, r: liveBowlerStat.runs ?? m.bowler.r, w: liveBowlerStat.wkts ?? m.bowler.w } : m.bowler;
       const currentOver = (!m.matchFinished && m.liveStarted && (m.over || []).length)
         ? `<div class="mini-over"><span>Current over</span>${this.ballsNewestFirst(m.over).map(x => `<i class="ball ${this.ballClass(x)}">${this.safe(String(x).slice(0,3))}</i>`).join("")}</div>`
         : "";
@@ -255,10 +256,10 @@ window.app = {
     let batting = detail?.battingScorecard || [];
     if (!detail && m.battingTeam?.name === team) batting = this.currentBattingRows(m);
     const bowling = detail?.bowlerStats || (m.battingTeam?.name === team ? m.bowlerStats : {});
-    $("scorecardBody").innerHTML = `<div class="card"><h3>${this.safe(team)} Batting</h3><table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>${batting.length ? batting.map(b => `<tr><td><b>${this.safe(b.name)}</b> ${(!b.out && !b.retired) ? "*" : ""}<br><small>${this.safe(b.dismissal || "")}</small></td><td>${b.r||0}</td><td>${b.b||0}</td><td>${b.f||0}</td><td>${b.s||0}</td><td>${calcSR(b.r,b.b)}</td></tr>`).join("") : `<tr><td colspan="6">No batting data</td></tr>`}</tbody></table></div><div class="card"><h3>Bowling</h3><table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody>${Object.keys(bowling).length ? Object.entries(bowling).map(([name,s]) => `<tr><td><b>${this.safe(name)}</b></td><td>${overText(s.balls||0)}</td><td>${s.runs||0}</td><td>${s.wkts||0}</td><td>${calcER(s.runs,s.balls)}</td></tr>`).join("") : `<tr><td colspan="5">No bowling data</td></tr>`}</tbody></table></div>`;
+    $("scorecardBody").innerHTML = `<div class="card"><h3>${this.safe(team)} Batting</h3><table><thead><tr><th>Batsman</th><th>R</th><th>B</th><th>4s</th><th>6s</th><th>SR</th></tr></thead><tbody>${batting.length ? batting.map(b => `<tr><td><b>${this.safe(b.name)}</b> ${(!b.out && !b.retired) ? "*" : ""}<br><small>${this.safe(b.dismissal || "")}</small></td><td>${b.r||0}</td><td>${b.b||0}</td><td>${b.f||0}</td><td>${b.s||0}</td><td>${calcSR(b.r,b.b)}</td></tr>`).join("") : `<tr><td colspan="6">No batting data</td></tr>`}</tbody></table></div><div class="card"><h3>Bowling</h3><table><thead><tr><th>Bowler</th><th>O</th><th>R</th><th>W</th><th>ER</th></tr></thead><tbody>${Object.keys(bowling).length ? Object.entries(bowling).map(([name,s]) => `<tr><td><b>${this.safe(s.playerName || s.name || name)}</b></td><td>${overText(s.balls||0)}</td><td>${s.runs||0}</td><td>${s.wkts||0}</td><td>${calcER(s.runs,s.balls)}</td></tr>`).join("") : `<tr><td colspan="5">No bowling data</td></tr>`}</tbody></table></div>`;
   },
 
-  currentBattingRows(m) { const rows = [...(m.battingScorecard || [])]; [m.bat1, m.bat2].forEach(b => { if (b?.name && b.name !== "-" && !rows.some(x => x.name === b.name)) rows.push(b); }); return rows; },
+  currentBattingRows(m) { const rows = [...(m.battingScorecard || [])]; [m.bat1, m.bat2].forEach(b => { if (b?.name && b.name !== "-" && !rows.some(x => (b.playerId && x.playerId === b.playerId) || (!b.playerId && x.name === b.name))) rows.push(b); }); return rows; },
   renderCommentary(m) {
     let rows = [...(m.commentary || [])];
     if (m.matchFinished || rows.length === 0) {
@@ -280,7 +281,7 @@ window.app = {
     const fours = rows.reduce((a,b)=>a+Number(b.f||0),0), sixes=rows.reduce((a,b)=>a+Number(b.s||0),0);
     const top=[...rows].sort((a,b)=>Number(b.r||0)-Number(a.r||0))[0];
     const bowl={};
-    Object.values(m.inningsDetails||{}).forEach(i=>Object.entries(i.bowlerStats||{}).forEach(([n,s])=>{bowl[n]=bowl[n]||{runs:0,balls:0,wkts:0}; bowl[n].runs+=Number(s.runs||0); bowl[n].balls+=Number(s.balls||0); bowl[n].wkts+=Number(s.wkts||0);}));
+    Object.values(m.inningsDetails||{}).forEach(i=>Object.entries(i.bowlerStats||{}).forEach(([n,s])=>{const k=s.playerId||n; bowl[k]=bowl[k]||{playerName:s.playerName||s.name||n,runs:0,balls:0,wkts:0}; bowl[k].runs+=Number(s.runs||0); bowl[k].balls+=Number(s.balls||0); bowl[k].wkts+=Number(s.wkts||0);}));
     if(!Object.keys(bowl).length) Object.assign(bowl,m.bowlerStats||{});
     const best=Object.entries(bowl).sort((a,b)=>Number(b[1].wkts||0)-Number(a[1].wkts||0))[0];
     const innings = Object.values(m.inningsDetails || {});
@@ -290,7 +291,7 @@ window.app = {
     const totalBalls = showFull ? innings.reduce((a,i)=>a+Number(i.balls||0),0) : m.balls;
     const fow = showFull ? innings.flatMap(i=>i.fallOfWickets||[]) : (m.fallOfWickets||[]);
     const projected = showFull ? "-" : (m.balls ? Math.round(m.runs/(m.balls/(m.totalOvers*6))) : 0);
-    $("statRuns").textContent=totalRuns;$("statWkts").textContent=totalWkts;$("statOvers").textContent=overText(totalBalls);$("statProjected").textContent=projected;$("statFours").textContent=fours;$("statSixes").textContent=sixes;$("statTopBatter").textContent=top?`${top.name} ${top.r}`:"-";$("statBestBowler").textContent=best?`${best[0]} ${best[1].wkts}/${best[1].runs}`:"-";$("fowList").innerHTML=fow.length?fow.map((x,i)=>`<div class="comment">${i+1}. ${this.safe(x)}</div>`).join(""):"<span class='muted'>No wickets</span>";
+    $("statRuns").textContent=totalRuns;$("statWkts").textContent=totalWkts;$("statOvers").textContent=overText(totalBalls);$("statProjected").textContent=projected;$("statFours").textContent=fours;$("statSixes").textContent=sixes;$("statTopBatter").textContent=top?`${top.name} ${top.r}`:"-";$("statBestBowler").textContent=best?`${best[1].playerName||best[0]} ${best[1].wkts}/${best[1].runs}`:"-";$("fowList").innerHTML=fow.length?fow.map((x,i)=>`<div class="comment">${i+1}. ${this.safe(x)}</div>`).join(""):"<span class='muted'>No wickets</span>";
     this.renderRunGraph(m);
   },
   allBatters(m) { const out=[]; Object.values(m.inningsDetails||{}).forEach(i=>out.push(...(i.battingScorecard||[]))); if(!out.length) out.push(...this.currentBattingRows(m)); return out; },
@@ -452,7 +453,7 @@ window.app = {
     box.addEventListener("pointerdown", show);
     box.addEventListener("pointerleave", hide);
   },
-  renderPlayers(m) { const blocks=[]; Object.entries(m.teams||{}).forEach(([team,players]) => (players||[]).forEach(p => { const meta=m.teamInfo?.[team]?.players?.[p]||{}; blocks.push(`<div class="player" onclick="app.playerModal('${encodeURIComponent(team)}','${encodeURIComponent(p)}')"><div class="avatar">${meta.image?`<img src="${this.safe(meta.image)}">`:this.short(p).slice(0,2)}</div><b>${this.safe(p)}</b><br><small>${this.safe(team)}</small></div>`); })); $("playersList").innerHTML = blocks.join("") || "<span class='muted'>No players</span>"; },
+  renderPlayers(m) { const blocks=[]; Object.entries(m.teams||{}).forEach(([team,players]) => (players||[]).forEach(p => { const meta=m.teamInfo?.[team]?.players?.[p]||{}; blocks.push(`<div class="player" onclick="app.playerModal('${encodeURIComponent(team)}','${encodeURIComponent(p)}','${encodeURIComponent(meta.playerId || "")}')"><div class="avatar">${meta.image?`<img src="${this.safe(meta.image)}">`:this.short(p).slice(0,2)}</div><b>${this.safe(p)}</b><br><small>${this.safe(team)}</small></div>`); })); $("playersList").innerHTML = blocks.join("") || "<span class='muted'>No players</span>"; },
   renderMatches() {
     const s = this.state || {};
     const isScheduled = String(s.status || "").toLowerCase() === "scheduled" && !s.liveStarted;
@@ -472,11 +473,12 @@ window.app = {
     return schedule;
   },
   renderPoints(m) { const l=m.league||{}; const pts=m.pointsTable||l.pointsTable||{}; $("pointsTitle").textContent = `${l.name || "League"} Points Table`; const rows=Object.entries(pts).sort((a,b)=>Number(b[1].Pts||0)-Number(a[1].Pts||0)||this.nrrValue(b[1])-this.nrrValue(a[1])||Number(b[1].W||0)-Number(a[1].W||0)||String(a[0]).localeCompare(String(b[0]))); $("pointsTable").innerHTML=rows.map(([t,p],i)=>`<tr><td><b>${i+1}. ${this.safe(t)}</b></td><td>${p.P||0}</td><td>${p.W||0}</td><td>${p.L||0}</td><td>${p.T||0}</td><td>${p.NR||0}</td><td><b>${p.Pts||0}</b></td><td class="${this.nrrValue(p)>=0?'positive':'negative'}">${this.nrr(p)}</td></tr>`).join("")||`<tr><td colspan="8">No points</td></tr>`; },
-  async playerModal(teamEnc, playerEnc) {
+  async playerModal(teamEnc, playerEnc, playerIdEnc = "") {
     const team = decodeURIComponent(teamEnc);
     const player = decodeURIComponent(playerEnc);
-    let stats = this.playerStats(player, team);
-    const playerId = this.state.teamInfo?.[team]?.players?.[player]?.playerId || "";
+    const requestedPlayerId = playerIdEnc ? decodeURIComponent(playerIdEnc) : "";
+    const playerId = requestedPlayerId || this.state.teamInfo?.[team]?.players?.[player]?.playerId || "";
+    let stats = this.playerStats(player, team, playerId);
     try {
       const careerRows = await getPlayerCareerStats({ playerId, playerName: player });
       if (careerRows.length) stats = this.statsFromCareerRows(careerRows);
@@ -487,7 +489,7 @@ window.app = {
     const bowlEco = calcER(stats.bowlingRuns, stats.bowlingBalls);
     $("modalBody").innerHTML = `
       <div class="profile-hero">
-        <div class="avatar xl">${this.playerImageHtml(player, team)}</div>
+        <div class="avatar xl">${this.playerImageHtml(player, team, playerId)}</div>
         <div><h2>${this.safe(player)}</h2><p>${this.safe(team)} · ${stats.matches} matches</p></div>
       </div>
       <p>${this.safe(team)} · Matches: <b>${stats.matches}</b></p>
@@ -536,14 +538,14 @@ window.app = {
         <div><span>NR</span><b>${points.NR || 0}</b></div>
       </div>
       <h3 style="margin:16px 0 8px">Squad</h3>
-      <div class="profile-list">${row.players.map(p => `<button onclick="app.playerModal('${encodeURIComponent(row.name)}','${encodeURIComponent(p)}')">${this.safe(p)}</button>`).join("") || "<span class='muted'>No players</span>"}</div>
+      <div class="profile-list">${row.players.map(p => { const meta = this.state.teamInfo?.[row.name]?.players?.[p] || {}; return `<button onclick="app.playerModal('${encodeURIComponent(row.name)}','${encodeURIComponent(p)}','${encodeURIComponent(meta.playerId || "")}')">${this.safe(p)}</button>`; }).join("") || "<span class='muted'>No players</span>"}</div>
       <h3 style="margin:16px 0 8px">Recent Matches</h3>
       ${recent.length ? recent.map(x => `<div class="comment"><b>${this.safe(x.matchTitle || x.title || "Match")}</b><br><small>${this.safe(x.winnerText || "Result pending")}</small></div>`).join("") : "<span class='muted'>No recent matches</span>"}
     `;
     $("modal").classList.add("show");
   },
-  playerImageHtml(player, team) {
-    const meta = this.state.teamInfo?.[team]?.players?.[player] || {};
+  playerImageHtml(player, team, playerId = "") {
+    const meta = (playerId && this.state.teamInfo?.[team]?.playersById?.[playerId]) || this.state.teamInfo?.[team]?.players?.[player] || {};
     return meta.image ? `<img src="${this.safe(meta.image)}">` : this.short(player).slice(0,2);
   },
   statsFromCareerRows(rows = []) {
@@ -568,9 +570,14 @@ window.app = {
     return s;
   },
   closeModal() { $("modal").classList.remove("show"); },
-  playerStats(player, teamName = "") {
+  playerKey(player = {}) { return player.playerId || String(player.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "_") || "player"; },
+  bowlerStat(m, bowler = {}) {
+    const key = this.playerKey(bowler);
+    return m.bowlerStats?.[key] || m.bowlerStats?.[bowler.name] || null;
+  },
+  playerStats(player, teamName = "", playerId = "") {
     const meta = teamName ? (this.state.teamInfo?.[teamName]?.players?.[player] || {}) : {};
-    const targetPlayerId = meta.playerId || "";
+    const targetPlayerId = playerId || meta.playerId || "";
     const s = { runs: 0, balls: 0, dots: 0, fours: 0, sixes: 0, wkts: 0, bowlingBalls: 0, bowlingRuns: 0, bowlingDots: 0, wides: 0, noBalls: 0, matches: 0, innings: 0 };
     const countedMatches = new Set();
     const processedMatches = new Set();
@@ -641,7 +648,7 @@ window.app = {
         if (inningSeen.has(key)) return;
         inningSeen.add(key);
         battingRows.forEach(bat => { if (addBatter(bat, innTeam)) seen = true; });
-        Object.entries(inn.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(name, stat, bowlingTeam)) seen = true; });
+      Object.entries(inn.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(stat.playerName || stat.name || name, stat, bowlingTeam)) seen = true; });
       };
 
       innings.forEach(addInnings);
@@ -668,8 +675,8 @@ window.app = {
         if (scorecard.battingScorecard) addInnings({ team: match.battingTeam?.name || "", battingScorecard: scorecard.battingScorecard });
         if (match.battingScorecard) addInnings({ team: match.battingTeam?.name || "", battingScorecard: match.battingScorecard });
         const legacyBowlingTeam = match.bowlingTeam?.name || match.bowlingTeam || "";
-        Object.entries(scorecard.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(name, stat, legacyBowlingTeam)) seen = true; });
-        Object.entries(match.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(name, stat, legacyBowlingTeam)) seen = true; });
+        Object.entries(scorecard.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(stat.playerName || stat.name || name, stat, legacyBowlingTeam)) seen = true; });
+        Object.entries(match.bowlerStats || {}).forEach(([name, stat]) => { if (addBowler(stat.playerName || stat.name || name, stat, legacyBowlingTeam)) seen = true; });
         if (match.bowler?.name === player && addBowler(match.bowler.name, match.bowler, legacyBowlingTeam)) seen = true;
       }
 

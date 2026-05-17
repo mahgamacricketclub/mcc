@@ -1,4 +1,4 @@
-import { cloudinaryConfig } from "../firebase/firebase-config.js";
+﻿import { cloudinaryConfig } from "../firebase/firebase-config.js";
 import {
   loginAdmin, logoutAdmin, watchAuth, isAdmin,
   saveTeam, deleteTeam, listenTeams, savePlayer, deletePlayer, listenPlayers,
@@ -149,11 +149,16 @@ window.app = {
     $("showTimeBtn").onclick = () => this.setTimedMode();
     document.querySelectorAll(".mode").forEach(b => b.onclick = () => this.setMode(b.dataset.mode));
     $("saveTeamBtn").onclick = () => this.runOnce("saveTeam", "saveTeamBtn", () => this.saveTeamForm());
-    $("newTeamBtn").onclick = () => this.clearTeamForm();
+    if ($("addTeamBtn")) $("addTeamBtn").onclick = () => this.openTeamForm();
+    if ($("teamFormClose")) $("teamFormClose").onclick = () => $("teamFormModal").classList.remove("show");
+    if ($("teamProfileClose")) $("teamProfileClose").onclick = () => $("teamProfileModal").classList.remove("show");
+    if ($("teamProfileEdit")) $("teamProfileEdit").onclick = () => this.editTeamFromProfile();
     $("deleteTeamBtn").onclick = () => this.runOnce("deleteTeam", "deleteTeamBtn", () => this.deleteSelectedTeam());
     $("savePlayerBtn").onclick = () => this.runOnce("savePlayer", "savePlayerBtn", () => this.savePlayerForm());
-    $("newPlayerBtn").onclick = () => this.clearPlayerForm();
+    if ($("addPlayerBtn")) $("addPlayerBtn").onclick = () => this.openPlayerForm();
+    if ($("playerFormClose")) $("playerFormClose").onclick = () => $("playerFormModal").classList.remove("show");
     $("deletePlayerBtn").onclick = () => this.runOnce("deletePlayer", "deletePlayerBtn", () => this.deleteSelectedPlayer());
+    if ($("refreshHealthBtn")) $("refreshHealthBtn").onclick = () => this.renderHealthCheck(true);
     $("teamLogoFile").onchange = e => this.uploadImage(e.target.files[0], "teamLogo");
     $("playerImageFile").onchange = e => this.uploadImage(e.target.files[0], "playerImage");
     $("leagueLogoFile").onchange = e => this.uploadImage(e.target.files[0], "leagueLogo");
@@ -161,6 +166,7 @@ window.app = {
     if ($("newLeagueBtn")) $("newLeagueBtn").onclick = () => this.newLeagueEditor();
     if ($("deleteLeagueBtn")) $("deleteLeagueBtn").onclick = () => this.runOnce("deleteLeague", "deleteLeagueBtn", () => this.deleteSelectedLeague());
     if ($("publicLeagueTabsBtn")) $("publicLeagueTabsBtn").onclick = () => this.togglePublicLeagueTabs();
+    if ($("leagueEditorClose")) $("leagueEditorClose").onclick = () => $("leagueEditor").classList.remove("show");
     this.loadPublicLeagueTabsSetting();
     $("generateScheduleBtn").onclick = () => this.runOnce("generateSchedule", "generateScheduleBtn", () => this.generateSchedule());
     if ($("autoFillPlayoffsBtn")) $("autoFillPlayoffsBtn").onclick = () => this.autoFillPlayoffs();
@@ -212,7 +218,7 @@ window.app = {
     btn.textContent = `User League & Points: ${checked ? "On" : "Off"}`;
     btn.classList.toggle("on", checked);
     btn.classList.toggle("off", !checked);
-    if (!checked) $("leagueEditor")?.classList.add("hidden");
+    if (!checked) $("leagueEditor")?.classList.remove("show");
   },
   loadPublicLeagueTabsSetting() {
     const saved = localStorage.getItem(PUBLIC_LEAGUE_TABS_KEY);
@@ -258,10 +264,10 @@ window.app = {
   showAdmin() { $("loginScreen").classList.add("hidden"); $("adminApp").classList.remove("hidden"); },
 
   startListeners() {
-    listenTeams((teams) => { this.teams = teams; this.renderTeams(); this.fillTeamSelectors(); this.renderLeagueTeamChecks(); }, e => this.toast(e.message, true));
-    listenLeagues((leagues) => { this.leagues = leagues; this.fillLeagueSelectors(); this.renderLeagueSchedule(); }, e => this.toast(e.message, true));
-    listenCompletedMatches((rows) => { this.completed = rows; this.renderHistory(); }, e => this.toast(e.message, true));
-    listenScheduledMatches((rows) => { this.scheduled = rows; this.renderHistory(); }, e => this.toast(e.message, true));
+    listenTeams((teams) => { this.teams = teams; this.renderTeams(); this.fillTeamSelectors(); this.renderLeagueTeamChecks(); this.renderHealthCheck(); }, e => this.toast(e.message, true));
+    listenLeagues((leagues) => { this.leagues = leagues; this.fillLeagueSelectors(); this.renderLeagueSchedule(); this.renderHealthCheck(); }, e => this.toast(e.message, true));
+    listenCompletedMatches((rows) => { this.completed = rows; this.renderHistory(); this.renderHealthCheck(); }, e => this.toast(e.message, true));
+    listenScheduledMatches((rows) => { this.scheduled = rows; this.renderHistory(); this.renderHealthCheck(); }, e => this.toast(e.message, true));
     this.restoreActiveMatch();
     this.render();
   },
@@ -467,6 +473,12 @@ window.app = {
   teamById(id) { return this.teams.find(t => t.teamId === id) || null; },
   playerById(team, id) { return (team?.players || []).find(p => p.playerId === id) || null; },
   teamObj(team) { return team ? { teamId: team.teamId, name: team.name, shortName: team.shortName || this.short(team.name), logo: team.logo || "" } : null; },
+  playerKey(player = {}) { return player.playerId || safeId(player.name || "player"); },
+  bowlerStat(player = {}) {
+    const key = this.playerKey(player);
+    const name = player.name || "-";
+    return this.state.bowlerStats?.[key] || this.state.bowlerStats?.[name] || {};
+  },
 
   newMatchId() {
     this.matchCounter += 1;
@@ -600,7 +612,18 @@ window.app = {
   },
 
   teamsToMap() { const out = {}; this.teams.forEach(t => out[t.name] = (t.players || []).map(p => p.name)); return out; },
-  teamInfoMap() { const out = {}; this.teams.forEach(t => { out[t.name] = { teamId: t.teamId, shortName: t.shortName || this.short(t.name), logo: t.logo || "", players: {} }; (t.players || []).forEach(p => out[t.name].players[p.name] = { ...p }); }); return out; },
+  teamInfoMap() {
+    const out = {};
+    this.teams.forEach(t => {
+      out[t.name] = { teamId: t.teamId, shortName: t.shortName || this.short(t.name), logo: t.logo || "", players: {}, playersById: {} };
+      (t.players || []).forEach(p => {
+        const player = { ...p };
+        out[t.name].players[p.name] = player;
+        if (p.playerId) out[t.name].playersById[p.playerId] = player;
+      });
+    });
+    return out;
+  },
   publicLink() { return new URL(`user.html?match=${this.currentMatchId || this.state.matchId || ""}`, location.href).href; },
   qrCodeUrl(link) { return link ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(link)}` : ""; },
   async copyPublicLink() { const link = this.publicLink(); try { await navigator.clipboard.writeText(link); this.toast("Public link copied."); } catch { prompt("Copy public link", link); } },
@@ -632,8 +655,9 @@ window.app = {
     const extraRuns = totalRuns - batRuns;
     const bowlerRuns = (isBye || isLb) ? extraBase : totalRuns;
     const striker = s.striker === 1 ? s.bat1 : s.bat2;
-    const bowlerKey = s.bowler.name || "-";
-    if (!s.bowlerStats[bowlerKey]) s.bowlerStats[bowlerKey] = { playerId: s.bowler.playerId || "", balls: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
+    const bowlerName = s.bowler.name || "-";
+    const bowlerKey = this.playerKey(s.bowler);
+    if (!s.bowlerStats[bowlerKey]) s.bowlerStats[bowlerKey] = { playerId: s.bowler.playerId || bowlerKey, playerName: bowlerName, name: bowlerName, balls: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
     const bs = s.bowlerStats[bowlerKey];
 
     s.runs += totalRuns;
@@ -663,7 +687,7 @@ window.app = {
 
     s.over.push(label);
     const ballNo = overText(s.balls);
-    const text = this.advancedCommentaryText(ballNo, striker.name, bowlerKey, label, { run, isWide, isNo, isBye, isLb, isWicket, batRuns, totalRuns, extraRuns, wicketInfo });
+    const text = this.advancedCommentaryText(ballNo, striker.name, bowlerName, label, { run, isWide, isNo, isBye, isLb, isWicket, batRuns, totalRuns, extraRuns, wicketInfo });
     s.commentary.unshift({ ball: ballNo, text, time: new Date().toLocaleTimeString() });
     s.recentBalls.unshift({ ball: ballNo, label, text, score: `${s.runs}/${s.wkts} (${overText(s.balls)})` });
     s.recentBalls = s.recentBalls.slice(0, 20);
@@ -1098,16 +1122,16 @@ window.app = {
   upsertBatter(row) {
     if (!row || !row.name || row.name === "-") return;
     const clean = normalizeBatter(row);
-    const i = this.state.battingScorecard.findIndex(x => x.name === clean.name);
+    const i = this.state.battingScorecard.findIndex(x => (clean.playerId && x.playerId === clean.playerId) || (!clean.playerId && x.name === clean.name));
     if (i >= 0) this.state.battingScorecard[i] = { ...this.state.battingScorecard[i], ...clean };
     else this.state.battingScorecard.push(clean);
   },
 
   bowlerFromStats(player = {}) {
     const name = player.name || "-";
-    const saved = this.state.bowlerStats?.[name] || {};
+    const saved = this.bowlerStat(player);
     return {
-      playerId: player.playerId || saved.playerId || "",
+      playerId: player.playerId || saved.playerId || safeId(name),
       name,
       balls: Number(saved.balls || 0),
       r: Number(saved.runs ?? saved.r ?? 0),
@@ -1133,7 +1157,7 @@ window.app = {
       });
       Object.entries(inn.bowlerStats || {}).forEach(([name, s]) => {
         const key = s.playerId || safeId(name);
-        out[key] = out[key] || { playerId: key, playerName: name, teamName: bowlingTeam, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, bowlingBalls: 0, bowlingRuns: 0 };
+        out[key] = out[key] || { playerId: key, playerName: s.playerName || s.name || name, teamName: bowlingTeam, runs: 0, balls: 0, fours: 0, sixes: 0, wickets: 0, bowlingBalls: 0, bowlingRuns: 0 };
         out[key].wickets += Number(s.wkts || 0); out[key].bowlingBalls += Number(s.balls || 0); out[key].bowlingRuns += Number(s.runs || 0); out[key].bowlingDots = Number(out[key].bowlingDots || 0) + Number(s.dots || 0); out[key].economy = calcER(out[key].bowlingRuns, out[key].bowlingBalls);
       });
     });
@@ -1366,9 +1390,9 @@ window.app = {
     const mode = this.state.commentaryMode || $("commentaryMode")?.value || "en";
     const total = Number(flags.totalRuns ?? run ?? 0);
     const rawType = flags.wicketInfo?.type || "Wicket";
-    const hiTypes = { Bowled: "बोल्ड", LBW: "एलबीडब्ल्यू", Caught: "कैच आउट", "Run Out": "रन आउट", Stumping: "स्टंपिंग", "Hit Wicket": "हिट विकेट", "Retired Out": "रिटायर्ड आउट", Wicket: "विकेट" };
+    const hiTypes = { Bowled: "à¤¬à¥‹à¤²à¥à¤¡", LBW: "à¤à¤²à¤¬à¥€à¤¡à¤¬à¥à¤²à¥à¤¯à¥‚", Caught: "à¤•à¥ˆà¤š à¤†à¤‰à¤Ÿ", "Run Out": "à¤°à¤¨ à¤†à¤‰à¤Ÿ", Stumping: "à¤¸à¥à¤Ÿà¤‚à¤ªà¤¿à¤‚à¤—", "Hit Wicket": "à¤¹à¤¿à¤Ÿ à¤µà¤¿à¤•à¥‡à¤Ÿ", "Retired Out": "à¤°à¤¿à¤Ÿà¤¾à¤¯à¤°à¥à¤¡ à¤†à¤‰à¤Ÿ", Wicket: "à¤µà¤¿à¤•à¥‡à¤Ÿ" };
     const type = mode === "hi" ? (hiTypes[rawType] || rawType) : rawType;
-    const helper = flags.wicketInfo?.helper ? (mode === "hi" ? `, ${flags.wicketInfo.helper} शामिल` : `, ${flags.wicketInfo.helper} involved`) : "";
+    const helper = flags.wicketInfo?.helper ? (mode === "hi" ? `, ${flags.wicketInfo.helper} à¤¶à¤¾à¤®à¤¿à¤²` : `, ${flags.wicketInfo.helper} involved`) : "";
     const packs = {
       en: {
         wicket: [`WICKET! ${type}${helper}. ${batter} is gone.`, `Breakthrough! ${type}${helper}, ${batter} has to walk back.`, `Huge moment. ${batter} falls by ${type}${helper}.`],
@@ -1405,21 +1429,21 @@ window.app = {
         score: `Score ${score}.`
       },
       hi: {
-        wicket: [`विकेट! ${type}${helper}. ${batter} आउट।`, `बड़ी सफलता! ${type}${helper}, ${batter} को लौटना होगा।`, `मैच का बड़ा पल, ${batter} ${type}${helper}।`],
-        wide: [`वाइड गेंद। एक अतिरिक्त रन।`, `लाइन बाहर रही, अंपायर ने वाइड दिया।`, `वाइड से एक रन जुड़ा।`],
-        wideRuns: [`वाइड, ${total} रन जुड़े।`, `${total} रन वाइड से मिले।`, `वाइड गेंद और ${total} रन।`],
-        no: [`नो बॉल। अब फ्री हिट आएगी।`, `ओवरस्टेप हुआ, नो बॉल।`, `${bowler} से नो बॉल।`],
-        noRuns: [`नो बॉल और ${run} रन। फ्री हिट आएगी।`, `नो बॉल पर ${run} रन भी मिल गए।`, `${run} रन नो बॉल से जुड़े।`],
-        bye: [`${total} बाई रन।`, `कीपर से चूक, ${total} बाई।`, `बाई से ${total} रन जुड़े।`],
-        lb: [`${total} लेग बाई रन।`, `पैड से लगी गेंद, ${total} लेग बाई।`, `लेग बाई से ${total} रन जुड़े।`],
-        six: [`छक्का! शानदार शॉट।`, `छक्का! गेंद सीमा रेखा के पार।`, `${batter} का बड़ा शॉट, छह रन।`],
-        four: [`चौका! गैप मिला और गेंद बाउंड्री तक।`, `चौका! बहुत अच्छी टाइमिंग।`, `${batter} ने बेहतरीन चौका निकाला।`],
-        dot: [`डॉट गेंद। गेंदबाज का अच्छा नियंत्रण।`, `कोई रन नहीं।`, `बल्लेबाज को जगह नहीं मिली।`],
-        one: [`एक रन लिया।`, `सिंगल मिल गया।`, `स्ट्राइक बदली।`],
-        two: [`दो रन पूरे।`, `गैप में खेला, दो रन।`, `अच्छी दौड़ से दो रन मिले।`],
-        three: [`तीन रन मिल गए।`, `बहुत अच्छी दौड़, तीन रन।`, `गेंद डीप में गई, तीन रन।`],
-        other: [`${run} रन लिए।`, `${run} रन जुड़े।`, `${run} रन मिले।`],
-        score: `स्कोर ${score}।`
+        wicket: [`à¤µà¤¿à¤•à¥‡à¤Ÿ! ${type}${helper}. ${batter} à¤†à¤‰à¤Ÿà¥¤`, `à¤¬à¤¡à¤¼à¥€ à¤¸à¤«à¤²à¤¤à¤¾! ${type}${helper}, ${batter} à¤•à¥‹ à¤²à¥Œà¤Ÿà¤¨à¤¾ à¤¹à¥‹à¤—à¤¾à¥¤`, `à¤®à¥ˆà¤š à¤•à¤¾ à¤¬à¤¡à¤¼à¤¾ à¤ªà¤², ${batter} ${type}${helper}à¥¤`],
+        wide: [`à¤µà¤¾à¤‡à¤¡ à¤—à¥‡à¤‚à¤¦à¥¤ à¤à¤• à¤…à¤¤à¤¿à¤°à¤¿à¤•à¥à¤¤ à¤°à¤¨à¥¤`, `à¤²à¤¾à¤‡à¤¨ à¤¬à¤¾à¤¹à¤° à¤°à¤¹à¥€, à¤…à¤‚à¤ªà¤¾à¤¯à¤° à¤¨à¥‡ à¤µà¤¾à¤‡à¤¡ à¤¦à¤¿à¤¯à¤¾à¥¤`, `à¤µà¤¾à¤‡à¤¡ à¤¸à¥‡ à¤à¤• à¤°à¤¨ à¤œà¥à¤¡à¤¼à¤¾à¥¤`],
+        wideRuns: [`à¤µà¤¾à¤‡à¤¡, ${total} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`, `${total} à¤°à¤¨ à¤µà¤¾à¤‡à¤¡ à¤¸à¥‡ à¤®à¤¿à¤²à¥‡à¥¤`, `à¤µà¤¾à¤‡à¤¡ à¤—à¥‡à¤‚à¤¦ à¤”à¤° ${total} à¤°à¤¨à¥¤`],
+        no: [`à¤¨à¥‹ à¤¬à¥‰à¤²à¥¤ à¤…à¤¬ à¤«à¥à¤°à¥€ à¤¹à¤¿à¤Ÿ à¤†à¤à¤—à¥€à¥¤`, `à¤“à¤µà¤°à¤¸à¥à¤Ÿà¥‡à¤ª à¤¹à¥à¤†, à¤¨à¥‹ à¤¬à¥‰à¤²à¥¤`, `${bowler} à¤¸à¥‡ à¤¨à¥‹ à¤¬à¥‰à¤²à¥¤`],
+        noRuns: [`à¤¨à¥‹ à¤¬à¥‰à¤² à¤”à¤° ${run} à¤°à¤¨à¥¤ à¤«à¥à¤°à¥€ à¤¹à¤¿à¤Ÿ à¤†à¤à¤—à¥€à¥¤`, `à¤¨à¥‹ à¤¬à¥‰à¤² à¤ªà¤° ${run} à¤°à¤¨ à¤­à¥€ à¤®à¤¿à¤² à¤—à¤à¥¤`, `${run} à¤°à¤¨ à¤¨à¥‹ à¤¬à¥‰à¤² à¤¸à¥‡ à¤œà¥à¤¡à¤¼à¥‡à¥¤`],
+        bye: [`${total} à¤¬à¤¾à¤ˆ à¤°à¤¨à¥¤`, `à¤•à¥€à¤ªà¤° à¤¸à¥‡ à¤šà¥‚à¤•, ${total} à¤¬à¤¾à¤ˆà¥¤`, `à¤¬à¤¾à¤ˆ à¤¸à¥‡ ${total} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`],
+        lb: [`${total} à¤²à¥‡à¤— à¤¬à¤¾à¤ˆ à¤°à¤¨à¥¤`, `à¤ªà¥ˆà¤¡ à¤¸à¥‡ à¤²à¤—à¥€ à¤—à¥‡à¤‚à¤¦, ${total} à¤²à¥‡à¤— à¤¬à¤¾à¤ˆà¥¤`, `à¤²à¥‡à¤— à¤¬à¤¾à¤ˆ à¤¸à¥‡ ${total} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`],
+        six: [`à¤›à¤•à¥à¤•à¤¾! à¤¶à¤¾à¤¨à¤¦à¤¾à¤° à¤¶à¥‰à¤Ÿà¥¤`, `à¤›à¤•à¥à¤•à¤¾! à¤—à¥‡à¤‚à¤¦ à¤¸à¥€à¤®à¤¾ à¤°à¥‡à¤–à¤¾ à¤•à¥‡ à¤ªà¤¾à¤°à¥¤`, `${batter} à¤•à¤¾ à¤¬à¤¡à¤¼à¤¾ à¤¶à¥‰à¤Ÿ, à¤›à¤¹ à¤°à¤¨à¥¤`],
+        four: [`à¤šà¥Œà¤•à¤¾! à¤—à¥ˆà¤ª à¤®à¤¿à¤²à¤¾ à¤”à¤° à¤—à¥‡à¤‚à¤¦ à¤¬à¤¾à¤‰à¤‚à¤¡à¥à¤°à¥€ à¤¤à¤•à¥¤`, `à¤šà¥Œà¤•à¤¾! à¤¬à¤¹à¥à¤¤ à¤…à¤šà¥à¤›à¥€ à¤Ÿà¤¾à¤‡à¤®à¤¿à¤‚à¤—à¥¤`, `${batter} à¤¨à¥‡ à¤¬à¥‡à¤¹à¤¤à¤°à¥€à¤¨ à¤šà¥Œà¤•à¤¾ à¤¨à¤¿à¤•à¤¾à¤²à¤¾à¥¤`],
+        dot: [`à¤¡à¥‰à¤Ÿ à¤—à¥‡à¤‚à¤¦à¥¤ à¤—à¥‡à¤‚à¤¦à¤¬à¤¾à¤œ à¤•à¤¾ à¤…à¤šà¥à¤›à¤¾ à¤¨à¤¿à¤¯à¤‚à¤¤à¥à¤°à¤£à¥¤`, `à¤•à¥‹à¤ˆ à¤°à¤¨ à¤¨à¤¹à¥€à¤‚à¥¤`, `à¤¬à¤²à¥à¤²à¥‡à¤¬à¤¾à¤œ à¤•à¥‹ à¤œà¤—à¤¹ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤`],
+        one: [`à¤à¤• à¤°à¤¨ à¤²à¤¿à¤¯à¤¾à¥¤`, `à¤¸à¤¿à¤‚à¤—à¤² à¤®à¤¿à¤² à¤—à¤¯à¤¾à¥¤`, `à¤¸à¥à¤Ÿà¥à¤°à¤¾à¤‡à¤• à¤¬à¤¦à¤²à¥€à¥¤`],
+        two: [`à¤¦à¥‹ à¤°à¤¨ à¤ªà¥‚à¤°à¥‡à¥¤`, `à¤—à¥ˆà¤ª à¤®à¥‡à¤‚ à¤–à¥‡à¤²à¤¾, à¤¦à¥‹ à¤°à¤¨à¥¤`, `à¤…à¤šà¥à¤›à¥€ à¤¦à¥Œà¤¡à¤¼ à¤¸à¥‡ à¤¦à¥‹ à¤°à¤¨ à¤®à¤¿à¤²à¥‡à¥¤`],
+        three: [`à¤¤à¥€à¤¨ à¤°à¤¨ à¤®à¤¿à¤² à¤—à¤à¥¤`, `à¤¬à¤¹à¥à¤¤ à¤…à¤šà¥à¤›à¥€ à¤¦à¥Œà¤¡à¤¼, à¤¤à¥€à¤¨ à¤°à¤¨à¥¤`, `à¤—à¥‡à¤‚à¤¦ à¤¡à¥€à¤ª à¤®à¥‡à¤‚ à¤—à¤ˆ, à¤¤à¥€à¤¨ à¤°à¤¨à¥¤`],
+        other: [`${run} à¤°à¤¨ à¤²à¤¿à¤à¥¤`, `${run} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`, `${run} à¤°à¤¨ à¤®à¤¿à¤²à¥‡à¥¤`],
+        score: `à¤¸à¥à¤•à¥‹à¤° ${score}à¥¤`
       }
     };
     const pack = packs[mode] || packs.en;
@@ -1450,31 +1474,31 @@ window.app = {
     if (flags.isWicket) {
       const type = flags.wicketInfo?.type || "Wicket";
       const helper = flags.wicketInfo?.helper ? `, ${flags.wicketInfo.helper} involved` : "";
-      action = mode === "hi" ? `WICKET! ${type}${helper}. ${batter} आउट हुए.` : mode === "mix" ? `WICKET! ${type}${helper}. ${batter} ko jaana padega.` : `WICKET! ${type}${helper}. ${batter} has to go.`;
+      action = mode === "hi" ? `WICKET! ${type}${helper}. ${batter} à¤†à¤‰à¤Ÿ à¤¹à¥à¤.` : mode === "mix" ? `WICKET! ${type}${helper}. ${batter} ko jaana padega.` : `WICKET! ${type}${helper}. ${batter} has to go.`;
     } else if (flags.isWide) {
-      action = mode === "hi" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} रन जुड़े.` : "Wide ball. एक extra run.") : mode === "mix" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs add hue.` : "Wide ball. Extra run added.") : (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs added.` : "Wide ball. Extra run added.");
+      action = mode === "hi" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡.` : "Wide ball. à¤à¤• extra run.") : mode === "mix" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs add hue.` : "Wide ball. Extra run added.") : (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs added.` : "Wide ball. Extra run added.");
     } else if (flags.isNo) {
-      action = mode === "hi" ? (run ? `No ball aur ${run} रन. Free hit आएगी.` : "No ball. Free hit आएगी.") : mode === "mix" ? (run ? `No ball aur ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.") : (run ? `No ball and ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.");
+      action = mode === "hi" ? (run ? `No ball aur ${run} à¤°à¤¨. Free hit à¤†à¤à¤—à¥€.` : "No ball. Free hit à¤†à¤à¤—à¥€.") : mode === "mix" ? (run ? `No ball aur ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.") : (run ? `No ball and ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.");
     } else if (flags.isBye) {
-      action = mode === "hi" ? `${flags.totalRuns} bye रन.` : `${flags.totalRuns} bye${flags.totalRuns > 1 ? "s" : ""}.`;
+      action = mode === "hi" ? `${flags.totalRuns} bye à¤°à¤¨.` : `${flags.totalRuns} bye${flags.totalRuns > 1 ? "s" : ""}.`;
     } else if (flags.isLb) {
-      action = mode === "hi" ? `${flags.totalRuns} leg bye रन.` : `${flags.totalRuns} leg bye${flags.totalRuns > 1 ? "s" : ""}.`;
+      action = mode === "hi" ? `${flags.totalRuns} leg bye à¤°à¤¨.` : `${flags.totalRuns} leg bye${flags.totalRuns > 1 ? "s" : ""}.`;
     } else if (run === 6) {
-      action = mode === "hi" ? "SIX! शानदार शॉट, गेंद सीमा रेखा के पार." : mode === "mix" ? "SIX! Zabardast hit, seedha boundary ke bahar." : "SIX! Clean strike, all the way.";
+      action = mode === "hi" ? "SIX! à¤¶à¤¾à¤¨à¤¦à¤¾à¤° à¤¶à¥‰à¤Ÿ, à¤—à¥‡à¤‚à¤¦ à¤¸à¥€à¤®à¤¾ à¤°à¥‡à¤–à¤¾ à¤•à¥‡ à¤ªà¤¾à¤°." : mode === "mix" ? "SIX! Zabardast hit, seedha boundary ke bahar." : "SIX! Clean strike, all the way.";
     } else if (run === 4) {
-      action = mode === "hi" ? "FOUR! गैप मिला और गेंद तेजी से बाउंड्री तक." : mode === "mix" ? "FOUR! Gap mila aur ball boundary tak gayi." : "FOUR! Finds the gap and races away.";
+      action = mode === "hi" ? "FOUR! à¤—à¥ˆà¤ª à¤®à¤¿à¤²à¤¾ à¤”à¤° à¤—à¥‡à¤‚à¤¦ à¤¤à¥‡à¤œà¥€ à¤¸à¥‡ à¤¬à¤¾à¤‰à¤‚à¤¡à¥à¤°à¥€ à¤¤à¤•." : mode === "mix" ? "FOUR! Gap mila aur ball boundary tak gayi." : "FOUR! Finds the gap and races away.";
     } else if (run === 0) {
-      action = mode === "hi" ? "Dot ball. गेंदबाज का अच्छा नियंत्रण." : mode === "mix" ? "Dot ball. Bowler ka achha control." : "Dot ball. Good control from the bowler.";
+      action = mode === "hi" ? "Dot ball. à¤—à¥‡à¤‚à¤¦à¤¬à¤¾à¤œ à¤•à¤¾ à¤…à¤šà¥à¤›à¤¾ à¤¨à¤¿à¤¯à¤‚à¤¤à¥à¤°à¤£." : mode === "mix" ? "Dot ball. Bowler ka achha control." : "Dot ball. Good control from the bowler.";
     } else if (run === 1) {
-      action = mode === "hi" ? "एक रन लिया." : mode === "mix" ? "Single nikal liya." : "Worked away for a single.";
+      action = mode === "hi" ? "à¤à¤• à¤°à¤¨ à¤²à¤¿à¤¯à¤¾." : mode === "mix" ? "Single nikal liya." : "Worked away for a single.";
     } else if (run === 2) {
-      action = mode === "hi" ? "गैप में खेला, दो रन पूरे." : mode === "mix" ? "Gap me push kiya, do run complete." : "Pushed into the gap, they come back for two.";
+      action = mode === "hi" ? "à¤—à¥ˆà¤ª à¤®à¥‡à¤‚ à¤–à¥‡à¤²à¤¾, à¤¦à¥‹ à¤°à¤¨ à¤ªà¥‚à¤°à¥‡." : mode === "mix" ? "Gap me push kiya, do run complete." : "Pushed into the gap, they come back for two.";
     } else if (run === 3) {
-      action = mode === "hi" ? "बेहतरीन running, तीन रन." : mode === "mix" ? "Achhi running, teen run mil gaye." : "Excellent running, three taken.";
+      action = mode === "hi" ? "à¤¬à¥‡à¤¹à¤¤à¤°à¥€à¤¨ running, à¤¤à¥€à¤¨ à¤°à¤¨." : mode === "mix" ? "Achhi running, teen run mil gaye." : "Excellent running, three taken.";
     } else {
-      action = mode === "hi" ? `${run} रन लिए.` : `${run} runs taken.`;
+      action = mode === "hi" ? `${run} à¤°à¤¨ à¤²à¤¿à¤.` : `${run} runs taken.`;
     }
-    const scoreText = mode === "hi" ? `स्कोर ${score}.` : `Score ${score}.`;
+    const scoreText = mode === "hi" ? `à¤¸à¥à¤•à¥‹à¤° ${score}.` : `Score ${score}.`;
     return `${ballNo}: ${base}, ${action} ${scoreText}${chase ? " " + chase : ""}`;
   },
   chaseLine() {
@@ -1613,42 +1637,101 @@ window.app = {
       const qr = $("liveUserQrImg");
       if (qr) qr.src = this.qrCodeUrl(this.publicLink());
     }
-    this.renderLeagueSchedule(); this.renderHistory();
+    this.renderLeagueSchedule(); this.renderHistory(); this.renderHealthCheck();
   },
   ballClass(x) { const t = String(x); if (/^W(?!d)/i.test(t)) return "wicket"; if (t === "4") return "four"; if (t === "6") return "six"; return ""; },
 
   renderTeams() {
-    $("teamList").innerHTML = this.teams.map(t => `<div class="card-mini" data-id="${t.teamId}"><b>${this.safe(t.name)}</b><br><small>${this.safe(t.shortName || "")} · ${(t.players || []).length} players</small></div>`).join("") || "<div class='item'>No teams</div>";
-    document.querySelectorAll("#teamList .card-mini").forEach(el => el.onclick = () => this.selectTeam(el.dataset.id));
-    this.renderAdminTeamProfile();
+    $("teamList").innerHTML = this.teams.map(t => `<div class="card-mini team-card" data-id="${t.teamId}"><div class="team-meta"><b>${this.safe(t.name)}</b><small>${this.safe(t.shortName || "")} · ${(t.players || []).length} players</small></div><button class="btn light team-profile-mini" type="button">Profile</button></div>`).join("") || "<div class='item'>No teams</div>";
+    document.querySelectorAll("#teamList .card-mini").forEach(el => {
+      el.onclick = e => {
+        if (e.target.closest(".team-profile-mini")) return;
+        this.selectTeam(el.dataset.id);
+      };
+      el.querySelector(".team-profile-mini")?.addEventListener("click", e => {
+        e.stopPropagation();
+        this.openTeamProfile(el.dataset.id);
+      });
+    });
   },
   selectTeam(id) {
     const t = this.teamById(id); if (!t) return; this.selectedTeamId = id; $("teamId").value = id; $("teamName").value = t.name || ""; $("teamShort").value = t.shortName || ""; $("teamLogo").value = t.logo || ""; $("selectedTeamName").textContent = t.name;
-    this.renderAdminTeamProfile();
     if (this.activeUnsubPlayers) this.activeUnsubPlayers();
-    this.activeUnsubPlayers = listenPlayers(id, players => { t.players = players; this.renderPlayers(players); this.fillTeamSelectors(); this.renderAdminTeamProfile(); }, e => this.toast(e.message, true));
+    this.activeUnsubPlayers = listenPlayers(id, players => { t.players = players; this.renderPlayers(players); this.fillTeamSelectors(); }, e => this.toast(e.message, true));
   },
-  renderAdminTeamProfile() {
-    const box = $("adminTeamProfile");
+  openTeamForm(teamId = "") {
+    if (teamId) this.selectTeam(teamId); else this.clearTeamForm();
+    $("teamFormTitle").textContent = teamId ? "Edit Team" : "Add Team";
+    $("deleteTeamBtn").classList.toggle("hidden", !teamId);
+    $("teamFormModal").classList.add("show");
+  },
+  openTeamProfile(teamId = this.selectedTeamId) {
+    const box = $("teamProfileBody");
     if (!box) return;
-    const team = this.teamById(this.selectedTeamId);
-    if (!team) return box.innerHTML = "<div class='item'>Select a team to view profile.</div>";
+    const team = this.teamById(teamId);
+    if (!team) return this.toast("Select a team first.", true);
     const pts = this.teamLeaguePoints(team.name);
     const logo = team.logo ? `<img src="${this.safe(team.logo)}" alt="">` : this.short(team.name);
+    this.profileTeamId = team.teamId;
     box.innerHTML = `<div class="admin-team-head"><div class="logo-preview">${logo}</div><div><h3>${this.safe(team.name)}</h3><p>${this.safe(team.shortName || this.short(team.name))}</p></div></div><div class="small-metrics"><div><span>Players</span><b>${(team.players || []).length}</b></div><div><span>Played</span><b>${pts.P || 0}</b></div><div><span>Won</span><b>${pts.W || 0}</b></div><div><span>Points</span><b>${pts.Pts || 0}</b></div></div><div class="admin-team-squad">${(team.players || []).map(p => `<span>${this.safe(p.name)}</span>`).join("") || "<small>No players added</small>"}</div>`;
+    $("teamProfileModal")?.classList.add("show");
+  },
+  editTeamFromProfile() {
+    $("teamProfileModal")?.classList.remove("show");
+    this.openTeamForm(this.profileTeamId);
   },
   teamLeaguePoints(teamName) {
     const league = this.currentLeague();
     return league?.pointsTable?.[teamName] || this.state.pointsTable?.[teamName] || {};
   },
-  renderPlayers(players = []) { $("playerList").innerHTML = players.map(p => `<div class="card-mini" data-id="${p.playerId}"><b>${this.safe(p.name)}</b><br><small>${this.safe(p.role || "Player")}</small></div>`).join("") || "<div class='item'>No players</div>"; document.querySelectorAll("#playerList .card-mini").forEach(el => el.onclick = () => this.selectPlayer(el.dataset.id)); },
-  selectPlayer(id) { const team = this.teamById(this.selectedTeamId); const p = (team?.players || []).find(x => x.playerId === id); if (!p) return; this.selectedPlayerId = id; $("playerId").value = id; $("playerName").value = p.name || ""; $("playerRole").value = p.role || "Batsman"; $("battingStyle").value = p.battingStyle || ""; $("bowlingStyle").value = p.bowlingStyle || ""; $("jerseyNo").value = p.jerseyNo || ""; $("playerImage").value = p.image || ""; },
-  async saveTeamForm() { const id = $("teamId").value || undefined; const name = $("teamName").value.trim(); if (!name) return this.toast("Team name is required.", true); const teamId = await saveTeam({ teamId: id, name, shortName: $("teamShort").value.trim(), logo: $("teamLogo").value.trim() }); this.selectTeam(teamId); this.toast("Team saved."); },
+  renderPlayers(players = []) {
+    $("playerList").innerHTML = players.map(p => `<div class="card-mini player-card" data-id="${p.playerId}"><div class="player-meta"><b>${this.safe(p.name)}</b><small>${this.safe(p.role || "Player")}</small></div><button class="btn light player-edit-mini" type="button">Edit</button></div>`).join("") || "<div class='item'>No players</div>";
+    document.querySelectorAll("#playerList .player-card").forEach(el => {
+      el.onclick = e => {
+        if (e.target.closest(".player-edit-mini")) return;
+        this.selectPlayer(el.dataset.id, true);
+      };
+      el.querySelector(".player-edit-mini")?.addEventListener("click", e => {
+        e.stopPropagation();
+        this.selectPlayer(el.dataset.id, true);
+      });
+    });
+  },
+  openPlayerForm() {
+    if (!this.selectedTeamId) return this.toast("Select a team first.", true);
+    this.clearPlayerForm();
+    $("playerFormTitle").textContent = "Add Player";
+    $("playerUidBox")?.classList.add("hidden");
+    if ($("playerUidText")) $("playerUidText").textContent = "-";
+    $("deletePlayerBtn").classList.add("hidden");
+    $("playerFormModal").classList.add("show");
+  },
+  selectPlayer(id, openForm = false) {
+    const team = this.teamById(this.selectedTeamId);
+    const p = (team?.players || []).find(x => x.playerId === id);
+    if (!p) return;
+    this.selectedPlayerId = id;
+    $("playerId").value = id;
+    $("playerName").value = p.name || "";
+    $("playerRole").value = p.role || "Batsman";
+    $("battingStyle").value = p.battingStyle || "";
+    $("bowlingStyle").value = p.bowlingStyle || "";
+    $("jerseyNo").value = p.jerseyNo || "";
+    $("playerImage").value = p.image || "";
+    if (openForm) {
+      $("playerFormTitle").textContent = "Edit Player";
+      $("playerUidBox")?.classList.remove("hidden");
+      if ($("playerUidText")) $("playerUidText").textContent = id;
+      $("deletePlayerBtn").classList.remove("hidden");
+      $("playerFormModal").classList.add("show");
+    }
+  },
+  async saveTeamForm() { const id = $("teamId").value || undefined; const name = $("teamName").value.trim(); if (!name) return this.toast("Team name is required.", true); const teamId = await saveTeam({ teamId: id, name, shortName: $("teamShort").value.trim(), logo: $("teamLogo").value.trim() }); this.selectTeam(teamId); $("teamFormModal")?.classList.remove("show"); this.toast("Team saved."); },
   clearTeamForm() { ["teamId", "teamName", "teamShort", "teamLogo"].forEach(id => $(id).value = ""); this.selectedTeamId = ""; },
-  async deleteSelectedTeam() { if (!this.selectedTeamId || !confirm("Delete this team?")) return; await deleteTeam(this.selectedTeamId); this.clearTeamForm(); this.toast("Team deleted."); },
-  async savePlayerForm() { if (!this.selectedTeamId) return this.toast("Select a team first.", true); const name = $("playerName").value.trim(); if (!name) return this.toast("Player name is required.", true); await savePlayer(this.selectedTeamId, { playerId: $("playerId").value || undefined, name, role: $("playerRole").value, battingStyle: $("battingStyle").value, bowlingStyle: $("bowlingStyle").value, jerseyNo: $("jerseyNo").value, image: $("playerImage").value.trim() }); this.clearPlayerForm(false); this.toast("Player saved."); },
+  async deleteSelectedTeam() { if (!this.selectedTeamId || !confirm("Delete this team?")) return; await deleteTeam(this.selectedTeamId); this.clearTeamForm(); $("teamFormModal")?.classList.remove("show"); this.toast("Team deleted."); },
+  async savePlayerForm() { if (!this.selectedTeamId) return this.toast("Select a team first.", true); const name = $("playerName").value.trim(); if (!name) return this.toast("Player name is required.", true); await savePlayer(this.selectedTeamId, { playerId: $("playerId").value || undefined, name, role: $("playerRole").value, battingStyle: $("battingStyle").value, bowlingStyle: $("bowlingStyle").value, jerseyNo: $("jerseyNo").value, image: $("playerImage").value.trim() }); this.clearPlayerForm(false); $("playerFormModal")?.classList.remove("show"); this.toast("Player saved."); },
   clearPlayerForm(clearId = true) { ["playerId", "playerName", "battingStyle", "bowlingStyle", "jerseyNo", "playerImage"].forEach(id => $(id).value = ""); if (clearId) this.selectedPlayerId = ""; },
-  async deleteSelectedPlayer() { if (!this.selectedTeamId || !this.selectedPlayerId || !confirm("Delete this player?")) return; await deletePlayer(this.selectedTeamId, this.selectedPlayerId); this.clearPlayerForm(); this.toast("Player deleted."); },
+  async deleteSelectedPlayer() { if (!this.selectedTeamId || !this.selectedPlayerId || !confirm("Delete this player?")) return; await deletePlayer(this.selectedTeamId, this.selectedPlayerId); this.clearPlayerForm(); $("playerFormModal")?.classList.remove("show"); this.toast("Player deleted."); },
 
   async uploadImage(file, targetInput) { if (!file) return; if (!cloudinaryConfig.cloudName || cloudinaryConfig.cloudName.includes("YOUR")) return this.toast("Cloudinary configuration is required.", true); const fd = new FormData(); fd.append("file", file); fd.append("upload_preset", cloudinaryConfig.uploadPreset); try { const res = await fetch(`https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`, { method: "POST", body: fd }); if (!res.ok) throw new Error("Cloudinary upload failed"); const json = await res.json(); $(targetInput).value = json.secure_url || json.url || ""; this.toast("Image uploaded."); } catch (e) { this.toast(e.message, true); } },
 
@@ -1660,10 +1743,10 @@ window.app = {
 
   openLeagueEditor(title = "Create League") {
     if ($("publicLeagueTabs")?.checked === false) {
-      $("leagueEditor")?.classList.add("hidden");
+      $("leagueEditor")?.classList.remove("show");
       return;
     }
-    $("leagueEditor")?.classList.remove("hidden");
+    $("leagueEditor")?.classList.add("show");
     if ($("leagueEditorTitle")) $("leagueEditorTitle").textContent = title;
   },
 
@@ -1759,6 +1842,7 @@ window.app = {
       await this.saveAll(true);
     }
     this.toast("League saved.");
+    $("leagueEditor")?.classList.remove("show");
     this.renderLeagueSchedule();
   },
 
@@ -1902,6 +1986,115 @@ window.app = {
     $("leaguePoints").innerHTML = Object.entries(pts).map(([team, p]) => `<tr><td>${this.safe(team)}</td><td>${p.P || 0}</td><td>${p.W || 0}</td><td>${p.L || 0}</td><td>${p.T || 0}</td><td>${p.NR || 0}</td><td>${p.Pts || 0}</td><td>${this.nrr(p)}</td></tr>`).join("") || `<tr><td colspan="8">No points</td></tr>`;
   },
   nrr(p) { const rf = p.BF ? p.RF / (p.BF / 6) : 0; const ra = p.BA ? p.RA / (p.BA / 6) : 0; return (rf - ra).toFixed(3); },
+
+  renderHealthCheck(showToast = false) {
+    if (!$("healthSummary") || !$("healthList")) return;
+    const report = this.buildHealthReport();
+    const counts = report.issues.reduce((acc, item) => {
+      acc[item.level] = (acc[item.level] || 0) + 1;
+      return acc;
+    }, {});
+    $("healthSummary").innerHTML = [
+      ["Teams", report.teams],
+      ["Players", report.players],
+      ["Matches", report.matches],
+      ["Issues", report.issues.length]
+    ].map(([label, value]) => `<div><span>${label}</span><b>${value}</b></div>`).join("");
+    $("healthList").innerHTML = report.issues.length
+      ? report.issues.map(item => `<div class="health-item ${item.level}"><b>${this.safe(item.title)}</b><small>${this.safe(item.detail)}</small><span class="tag">${this.safe(item.scope)}</span></div>`).join("")
+      : `<div class="health-item ok"><b>Data health looks clean</b><small>No obvious missing IDs, duplicate players, incomplete scorecards, or league schedule risks found in the loaded data.</small><span class="tag">Ready</span></div>`;
+    if (showToast) this.toast(report.issues.length ? `Health check complete: ${counts.danger || 0} critical, ${counts.warn || 0} warnings.` : "Health check complete. No issues found.");
+  },
+
+  buildHealthReport() {
+    const issues = [];
+    const add = (level, title, detail, scope = "Data") => issues.push({ level, title, detail, scope });
+    const allMatches = [
+      ...(this.state?.matchId ? [this.state] : []),
+      ...(this.scheduled || []),
+      ...(this.completed || [])
+    ];
+    const matchIds = new Map();
+    let playerCount = 0;
+
+    (this.teams || []).forEach(team => {
+      const players = Array.isArray(team.players) ? team.players : [];
+      if (!team.teamId) add("danger", "Team is missing teamId", team.name || "Unnamed team", "Teams");
+      if (!String(team.name || "").trim()) add("danger", "Team is missing name", team.teamId || "Unknown team", "Teams");
+      if (!players.length) add("warn", "Team has no players", team.name || team.teamId || "Unknown team", "Teams");
+      const names = new Map();
+      players.forEach(player => {
+        playerCount += 1;
+        const name = String(player.name || "").trim();
+        const key = name.toLowerCase();
+        if (!player.playerId) add("danger", "Player is missing playerId", `${name || "Unnamed player"} in ${team.name || "Unknown team"}`, "Players");
+        if (!name) add("danger", "Player is missing name", `${player.playerId || "Unknown ID"} in ${team.name || "Unknown team"}`, "Players");
+        if (key) {
+          names.set(key, (names.get(key) || 0) + 1);
+          if (names.get(key) === 2) add("warn", "Duplicate player name in same team", `${name} appears more than once in ${team.name || "Unknown team"}. Old name-based data can attach to the wrong player.`, "Players");
+        }
+      });
+    });
+
+    const scanBatter = (b, match, source) => {
+      if (!b?.name || b.name === "-") return;
+      if (!b.playerId) add("warn", "Batter is saved without playerId", `${b.name} in ${match.matchTitle || match.matchId || "Unknown match"} (${source})`, "Player IDs");
+    };
+    const scanBowler = (name, stat, match, source) => {
+      const playerName = stat?.playerName || stat?.name || name || "";
+      if (!playerName || playerName === "-") return;
+      if (!stat?.playerId) add("warn", "Bowler is saved without playerId", `${playerName} in ${match.matchTitle || match.matchId || "Unknown match"} (${source})`, "Player IDs");
+    };
+
+    allMatches.forEach(match => {
+      const id = match.matchId || match.id || "";
+      if (!id) add("danger", "Match is missing matchId", match.matchTitle || match.title || "Untitled match", "Matches");
+      if (id) {
+        matchIds.set(id, (matchIds.get(id) || 0) + 1);
+        if (matchIds.get(id) === 2) add("danger", "Duplicate matchId loaded", `${id} appears in more than one loaded match list.`, "Matches");
+      }
+      if (!match.teamA?.name || !match.teamB?.name) add("warn", "Match teams are incomplete", match.matchTitle || id || "Unknown match", "Matches");
+      if (match.status === "scheduled" && (!match.matchDate || !match.matchTime)) add("warn", "Scheduled match is missing date or time", match.matchTitle || id || "Unknown match", "Schedule");
+      if (match.matchFinished) {
+        const hasInnings = Object.keys(match.inningsDetails || {}).length > 0;
+        const hasScorecard = !!(match.fullScorecardData || match.scorecard);
+        if (!hasInnings && !hasScorecard) add("danger", "Completed match has no saved scorecard", match.matchTitle || id || "Unknown completed match", "Scorecards");
+        if (!match.winnerText && match.status !== "no-result") add("warn", "Completed match has no result text", match.matchTitle || id || "Unknown completed match", "Scorecards");
+      }
+      [match.bat1, match.bat2].forEach(b => scanBatter(b, match, "live batsman"));
+      (match.battingScorecard || []).forEach(b => scanBatter(b, match, "batting scorecard"));
+      if (match.bowler?.name && match.bowler.name !== "-" && !match.bowler.playerId) add("warn", "Current bowler is saved without playerId", `${match.bowler.name} in ${match.matchTitle || id || "Unknown match"}`, "Player IDs");
+      Object.entries(match.bowlerStats || {}).forEach(([name, stat]) => scanBowler(name, stat, match, "bowler stats"));
+      Object.values(match.inningsDetails || {}).forEach(inn => {
+        (inn.battingScorecard || []).forEach(b => scanBatter(b, match, `${inn.team || "innings"} batting`));
+        Object.entries(inn.bowlerStats || {}).forEach(([name, stat]) => scanBowler(name, stat, match, `${inn.team || "innings"} bowling`));
+      });
+    });
+
+    (this.leagues || []).forEach(league => {
+      const schedule = Array.isArray(league.schedule) ? league.schedule : [];
+      if (!league.leagueId) add("danger", "League is missing leagueId", league.name || "Unnamed league", "Leagues");
+      if (!String(league.name || "").trim()) add("warn", "League is missing name", league.leagueId || "Unknown league", "Leagues");
+      if (!Array.isArray(league.teams) || !league.teams.length) add("warn", "League has no teams selected", league.name || league.leagueId || "Unknown league", "Leagues");
+      const matchNos = new Map();
+      schedule.forEach((fixture, index) => {
+        const label = `${league.name || "League"} fixture ${fixture.matchNo || index + 1}`;
+        if (!fixture.teamA?.name || !fixture.teamB?.name) add("warn", "Fixture has missing team", label, "League Schedule");
+        if (fixture.status === "completed" && !fixture.matchId) add("warn", "Completed fixture has no match link", label, "League Schedule");
+        if (fixture.matchNo) {
+          matchNos.set(fixture.matchNo, (matchNos.get(fixture.matchNo) || 0) + 1);
+          if (matchNos.get(fixture.matchNo) === 2) add("warn", "Duplicate fixture match number", `${league.name || "League"} has match no ${fixture.matchNo} more than once.`, "League Schedule");
+        }
+      });
+    });
+
+    return {
+      teams: (this.teams || []).length,
+      players: playerCount,
+      matches: allMatches.length,
+      issues: issues.sort((a, b) => ({ danger: 0, warn: 1, ok: 2 }[a.level] - { danger: 0, warn: 1, ok: 2 }[b.level]))
+    };
+  },
 
   renderHistory() {
     const saved = this.getActiveBackup();
