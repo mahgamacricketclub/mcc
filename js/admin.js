@@ -64,6 +64,7 @@ const blankState = () => normalizeState({
   partnershipBalls: 0,
   lastWicket: "-",
   highlights: [],
+  specialStreaks: { batterId: "", shot: "", shotCount: 0, bowlerId: "", wicketCount: 0, partnershipMark: 0, lastPressureKey: "", lastPhaseKey: "", bowlerHighlightKey: "" },
   teamInfo: {},
   teams: {},
   pointsTable: {},
@@ -659,6 +660,7 @@ window.app = {
     const bowlerKey = this.playerKey(s.bowler);
     if (!s.bowlerStats[bowlerKey]) s.bowlerStats[bowlerKey] = { playerId: s.bowler.playerId || bowlerKey, playerName: bowlerName, name: bowlerName, balls: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
     const bs = s.bowlerStats[bowlerKey];
+    const strikerBeforeRuns = Number(striker.r || 0);
 
     s.runs += totalRuns;
     s.extras += extraRuns;
@@ -687,11 +689,13 @@ window.app = {
 
     s.over.push(label);
     const ballNo = overText(s.balls);
-    const text = this.advancedCommentaryText(ballNo, striker.name, bowlerName, label, { run, isWide, isNo, isBye, isLb, isWicket, batRuns, totalRuns, extraRuns, wicketInfo });
+    const specialText = this.specialCommentaryText(striker, bowlerName, bowlerKey, { legal, batRuns, isWicket, wicketInfo, beforeRuns: strikerBeforeRuns });
+    const text = [this.advancedCommentaryText(ballNo, striker.name, bowlerName, label, { run, isWide, isNo, isBye, isLb, isWicket, batRuns, totalRuns, extraRuns, wicketInfo }), specialText].filter(Boolean).join(" ");
     s.commentary.unshift({ ball: ballNo, text, time: new Date().toLocaleTimeString() });
     s.recentBalls.unshift({ ball: ballNo, label, text, score: `${s.runs}/${s.wkts} (${overText(s.balls)})` });
     s.recentBalls = s.recentBalls.slice(0, 20);
     if (batRuns === 4 || batRuns === 6) s.highlights.unshift({ text: `${batRuns === 4 ? "FOUR" : "SIX"} by ${striker.name}`, time: new Date().toLocaleTimeString() });
+    if (specialText) s.highlights.unshift({ text: specialText, time: new Date().toLocaleTimeString() });
 
     const maxBalls = Number(s.totalOvers || 20) * 6;
     const chaseComplete = s.inningNumber > 1 && s.target && s.runs >= s.target;
@@ -889,7 +893,7 @@ window.app = {
     this.state.battingTeam = this.state.bowlingTeam;
     this.state.bowlingTeam = oldBat;
     this.state.inningNumber = 2;
-    Object.assign(this.state, { runs: 0, wkts: 0, balls: 0, extras: 0, striker: 1, over: [], recentBalls: [], overSummary: [], commentary: [], fallOfWickets: [], partnershipRuns: 0, partnershipBalls: 0, lastWicket: "-", dismissed: [], retired: [], battingScorecard: [], bowlerStats: {}, lastOverBowler: "" });
+    Object.assign(this.state, { runs: 0, wkts: 0, balls: 0, extras: 0, striker: 1, over: [], recentBalls: [], overSummary: [], commentary: [], fallOfWickets: [], partnershipRuns: 0, partnershipBalls: 0, lastWicket: "-", dismissed: [], retired: [], battingScorecard: [], bowlerStats: {}, lastOverBowler: "", specialStreaks: { batterId: "", shot: "", shotCount: 0, bowlerId: "", wicketCount: 0, partnershipMark: 0, lastPressureKey: "", lastPhaseKey: "", bowlerHighlightKey: "" } });
     this.state.bat1 = normalizeBatter({ name: "-" });
     this.state.bat2 = normalizeBatter({ name: "-" });
     this.state.bowler = { name: "-", balls: 0, r: 0, w: 0, runs: 0, wkts: 0, dots: 0, wides: 0, noBalls: 0 };
@@ -1382,6 +1386,177 @@ window.app = {
     const seed = [...source].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
     return lines[seed % lines.length];
   },
+  specialCommentaryText(batter, bowlerName, bowlerKey, flags = {}) {
+    const s = this.state;
+    const mode = s.commentaryMode || $("commentaryMode")?.value || "en";
+    const streaks = s.specialStreaks || (s.specialStreaks = { batterId: "", shot: "", shotCount: 0, bowlerId: "", wicketCount: 0, partnershipMark: 0, lastPressureKey: "", lastPhaseKey: "", bowlerHighlightKey: "" });
+    const playerKey = batter?.playerId || batter?.name || "";
+    const parts = [];
+    const before = Number(flags.beforeRuns || 0);
+    const after = Number(batter?.r || 0);
+    const t = {
+      hi: {
+        pressure: "दबाव बढ़ रहा है, अब हर गेंद अहम है।",
+        lastOver: (need) => `आखिरी ओवर में ${need} रन चाहिए, मैच रोमांचक मोड़ पर है।`,
+        powerplay: "पावरप्ले में बल्लेबाजी टीम तेज शुरुआत चाहती है।",
+        death: "डेथ ओवर शुरू, अब बड़े शॉट और दबाव दोनों साथ चलेंगे।",
+        middle: "बीच के ओवरों में स्ट्राइक रोटेशन अहम रहेगा।",
+        partnership: (mark) => `इस जोड़ी ने ${mark} रन की साझेदारी पूरी की।`,
+        economy: `${bowlerName} ने कसी हुई गेंदबाजी से रन रोक रखे हैं।`,
+        wickets: `${bowlerName} का स्पेल असरदार रहा है, विकेट लगातार दबाव बना रहे हैं।`,
+        fast: `${batter.name} तेज खेल रहे हैं, स्ट्राइक रेट लगातार ऊपर जा रहा है।`
+      },
+      mix: {
+        pressure: "Pressure badh raha hai, ab har ball important hai.",
+        lastOver: (need) => `Last over me ${need} run chahiye, match ekdum tight hai.`,
+        powerplay: "Powerplay me batting side fast start dhoondh rahi hai.",
+        death: "Death overs shuru, ab bade shots aur pressure dono rahenge.",
+        middle: "Middle overs me strike rotation bahut important rahega.",
+        partnership: (mark) => `Is pair ne ${mark} run ki partnership complete kar li.`,
+        economy: `${bowlerName} tight bowling kar rahe hain, runs rok diye hain.`,
+        wickets: `${bowlerName} ka spell impactful hai, wickets se pressure bana hai.`,
+        fast: `${batter.name} attacking mood me hain, strike rate upar ja raha hai.`
+      },
+      en: {
+        pressure: "Pressure is rising, every ball matters now.",
+        lastOver: (need) => `${need} needed in the final over, this match is on a knife edge.`,
+        powerplay: "Powerplay phase, the batting side will want a fast start.",
+        death: "Death overs now, big shots and pressure come together.",
+        middle: "Middle overs phase, strike rotation will be important.",
+        partnership: (mark) => `This pair brings up a ${mark}-run partnership.`,
+        economy: `${bowlerName} has kept it tight and dried up the scoring.`,
+        wickets: `${bowlerName} is making this spell count with wickets.`,
+        fast: `${batter.name} is scoring quickly and lifting the tempo.`
+      }
+    }[mode] || {};
+
+    const milestone = [200, 150, 100, 50].find(mark => before < mark && after >= mark);
+    if (milestone) {
+      if (mode === "hi") {
+        parts.push(milestone === 50
+          ? `${batter.name} का अर्धशतक पूरा, शानदार पारी।`
+          : `${batter.name} ने ${milestone} रन पूरे किए, बेहतरीन बल्लेबाजी।`);
+      } else if (mode === "mix") {
+        parts.push(milestone === 50
+          ? `${batter.name} ka fifty complete, kamaal ki batting.`
+          : `${batter.name} ne ${milestone} runs complete kiye, top-class knock.`);
+      } else {
+        parts.push(milestone === 50
+          ? `${batter.name} brings up a fine fifty.`
+          : `${batter.name} reaches ${milestone}, outstanding batting.`);
+      }
+    }
+
+    if (flags.legal && (flags.batRuns === 4 || flags.batRuns === 6)) {
+      const shot = flags.batRuns === 6 ? "six" : "four";
+      if (streaks.batterId === playerKey && streaks.shot === shot) streaks.shotCount = Number(streaks.shotCount || 0) + 1;
+      else Object.assign(streaks, { batterId: playerKey, shot, shotCount: 1 });
+      if (streaks.shotCount === 3) {
+        const shotHi = shot === "six" ? "छक्कों" : "चौकों";
+        const shotMix = shot === "six" ? "sixes" : "fours";
+        parts.push(mode === "hi"
+          ? `${batter.name} ने लगातार तीन ${shotHi} लगाए।`
+          : mode === "mix"
+            ? `${batter.name} ke back-to-back three ${shotMix}, pressure badh gaya.`
+            : `${batter.name} makes it three ${shotMix} in a row.`);
+      }
+    } else if (flags.legal) {
+      Object.assign(streaks, { batterId: playerKey, shot: "", shotCount: 0 });
+    }
+
+    const wicketType = flags.wicketInfo?.type || "";
+    const bowlerWicket = flags.legal && flags.isWicket && !["Run Out", "Retired Out"].includes(wicketType);
+    if (bowlerWicket) {
+      if (streaks.bowlerId === bowlerKey) streaks.wicketCount = Number(streaks.wicketCount || 0) + 1;
+      else Object.assign(streaks, { bowlerId: bowlerKey, wicketCount: 1 });
+      if (streaks.wicketCount === 2) {
+        parts.push(mode === "hi"
+          ? `${bowlerName} अब हैट्रिक पर हैं।`
+          : mode === "mix"
+            ? `${bowlerName} hat-trick ball par aa gaye.`
+            : `${bowlerName} is on a hat-trick.`);
+      } else if (streaks.wicketCount === 3) {
+        parts.push(mode === "hi"
+          ? `हैट्रिक! ${bowlerName} ने लगातार तीन विकेट लिए।`
+          : mode === "mix"
+            ? `HAT-TRICK! ${bowlerName} ne lagatar teen wicket le liye.`
+            : `HAT-TRICK! ${bowlerName} has three wickets in three balls.`);
+      }
+    } else if (flags.legal && !flags.isWicket) {
+      Object.assign(streaks, { bowlerId: bowlerKey, wicketCount: 0 });
+    }
+
+    if (!flags.isWicket) {
+      const partnership = Number(s.partnershipRuns || 0);
+      const partnershipMark = [150, 100, 50].find(mark => partnership >= mark && Number(streaks.partnershipMark || 0) < mark);
+      if (partnershipMark) {
+        streaks.partnershipMark = partnershipMark;
+        parts.push(t.partnership(partnershipMark));
+      }
+    } else {
+      streaks.partnershipMark = 0;
+    }
+
+    const totalBalls = Number(s.totalOvers || 20) * 6;
+    const ballsLeft = Math.max(totalBalls - Number(s.balls || 0), 0);
+    const need = s.target ? Math.max(Number(s.target || 0) - Number(s.runs || 0), 0) : 0;
+    const rrr = need && ballsLeft ? (need * 6) / ballsLeft : 0;
+    if (s.inningNumber > 1 && need > 0) {
+      if (ballsLeft <= 6) {
+        const key = `last-${need}-${ballsLeft}`;
+        if (streaks.lastPressureKey !== key) {
+          streaks.lastPressureKey = key;
+          parts.push(t.lastOver(need));
+        }
+      } else if (rrr >= 10 || (ballsLeft <= 18 && need >= ballsLeft)) {
+        const key = `pressure-${Math.ceil(rrr)}-${Math.ceil(ballsLeft / 6)}`;
+        if (streaks.lastPressureKey !== key) {
+          streaks.lastPressureKey = key;
+          parts.push(t.pressure);
+        }
+      }
+    }
+
+    if (flags.legal) {
+      const overNo = Math.floor(Number(s.balls || 0) / 6) + 1;
+      const phase = overNo <= Math.min(6, Number(s.totalOvers || 20)) ? "powerplay" : ballsLeft <= 24 ? "death" : "middle";
+      const phaseKey = `${s.inningNumber}-${phase}`;
+      if (streaks.lastPhaseKey !== phaseKey) {
+        streaks.lastPhaseKey = phaseKey;
+        parts.push(t[phase]);
+      }
+    }
+
+    const bowlerStat = s.bowlerStats?.[bowlerKey] || {};
+    const bowlerBalls = Number(bowlerStat.balls || 0);
+    const bowlerRuns = Number(bowlerStat.runs || 0);
+    const bowlerWkts = Number(bowlerStat.wkts || 0);
+    const economy = bowlerBalls ? (bowlerRuns / (bowlerBalls / 6)) : 0;
+    if (bowlerBalls >= 12 && economy > 0 && economy <= 4) {
+      const key = `${bowlerKey}-eco-${Math.floor(bowlerBalls / 6)}`;
+      if (streaks.bowlerHighlightKey !== key) {
+        streaks.bowlerHighlightKey = key;
+        parts.push(t.economy);
+      }
+    } else if (bowlerWkts >= 3) {
+      const key = `${bowlerKey}-wkts-${bowlerWkts}`;
+      if (streaks.bowlerHighlightKey !== key) {
+        streaks.bowlerHighlightKey = key;
+        parts.push(t.wickets);
+      }
+    }
+
+    if (Number(batter?.b || 0) >= 8 && Number(batter?.r || 0) >= 20) {
+      const strikeRate = (Number(batter.r || 0) * 100) / Number(batter.b || 1);
+      const key = `${playerKey}-fast-${Math.floor(Number(batter.r || 0) / 20)}`;
+      if (strikeRate >= 160 && streaks.fastBatterKey !== key) {
+        streaks.fastBatterKey = key;
+        parts.push(t.fast);
+      }
+    }
+
+    return parts.join(" ");
+  },
   advancedCommentaryText(ballNo, batter, bowler, label, flags = {}) {
     const run = Number(flags.run || 0);
     const score = `${this.state.runs}/${this.state.wkts}`;
@@ -1390,9 +1565,9 @@ window.app = {
     const mode = this.state.commentaryMode || $("commentaryMode")?.value || "en";
     const total = Number(flags.totalRuns ?? run ?? 0);
     const rawType = flags.wicketInfo?.type || "Wicket";
-    const hiTypes = { Bowled: "à¤¬à¥‹à¤²à¥à¤¡", LBW: "à¤à¤²à¤¬à¥€à¤¡à¤¬à¥à¤²à¥à¤¯à¥‚", Caught: "à¤•à¥ˆà¤š à¤†à¤‰à¤Ÿ", "Run Out": "à¤°à¤¨ à¤†à¤‰à¤Ÿ", Stumping: "à¤¸à¥à¤Ÿà¤‚à¤ªà¤¿à¤‚à¤—", "Hit Wicket": "à¤¹à¤¿à¤Ÿ à¤µà¤¿à¤•à¥‡à¤Ÿ", "Retired Out": "à¤°à¤¿à¤Ÿà¤¾à¤¯à¤°à¥à¤¡ à¤†à¤‰à¤Ÿ", Wicket: "à¤µà¤¿à¤•à¥‡à¤Ÿ" };
+    const hiTypes = { Bowled: "बोल्ड", LBW: "एलबीडब्ल्यू", Caught: "कैच आउट", "Run Out": "रन आउट", Stumping: "स्टंपिंग", "Hit Wicket": "हिट विकेट", "Retired Out": "रिटायर्ड आउट", Wicket: "विकेट" };
     const type = mode === "hi" ? (hiTypes[rawType] || rawType) : rawType;
-    const helper = flags.wicketInfo?.helper ? (mode === "hi" ? `, ${flags.wicketInfo.helper} à¤¶à¤¾à¤®à¤¿à¤²` : `, ${flags.wicketInfo.helper} involved`) : "";
+    const helper = flags.wicketInfo?.helper ? (mode === "hi" ? `, ${flags.wicketInfo.helper} शामिल` : `, ${flags.wicketInfo.helper} involved`) : "";
     const packs = {
       en: {
         wicket: [`WICKET! ${type}${helper}. ${batter} is gone.`, `Breakthrough! ${type}${helper}, ${batter} has to walk back.`, `Huge moment. ${batter} falls by ${type}${helper}.`],
@@ -1429,21 +1604,21 @@ window.app = {
         score: `Score ${score}.`
       },
       hi: {
-        wicket: [`à¤µà¤¿à¤•à¥‡à¤Ÿ! ${type}${helper}. ${batter} à¤†à¤‰à¤Ÿà¥¤`, `à¤¬à¤¡à¤¼à¥€ à¤¸à¤«à¤²à¤¤à¤¾! ${type}${helper}, ${batter} à¤•à¥‹ à¤²à¥Œà¤Ÿà¤¨à¤¾ à¤¹à¥‹à¤—à¤¾à¥¤`, `à¤®à¥ˆà¤š à¤•à¤¾ à¤¬à¤¡à¤¼à¤¾ à¤ªà¤², ${batter} ${type}${helper}à¥¤`],
-        wide: [`à¤µà¤¾à¤‡à¤¡ à¤—à¥‡à¤‚à¤¦à¥¤ à¤à¤• à¤…à¤¤à¤¿à¤°à¤¿à¤•à¥à¤¤ à¤°à¤¨à¥¤`, `à¤²à¤¾à¤‡à¤¨ à¤¬à¤¾à¤¹à¤° à¤°à¤¹à¥€, à¤…à¤‚à¤ªà¤¾à¤¯à¤° à¤¨à¥‡ à¤µà¤¾à¤‡à¤¡ à¤¦à¤¿à¤¯à¤¾à¥¤`, `à¤µà¤¾à¤‡à¤¡ à¤¸à¥‡ à¤à¤• à¤°à¤¨ à¤œà¥à¤¡à¤¼à¤¾à¥¤`],
-        wideRuns: [`à¤µà¤¾à¤‡à¤¡, ${total} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`, `${total} à¤°à¤¨ à¤µà¤¾à¤‡à¤¡ à¤¸à¥‡ à¤®à¤¿à¤²à¥‡à¥¤`, `à¤µà¤¾à¤‡à¤¡ à¤—à¥‡à¤‚à¤¦ à¤”à¤° ${total} à¤°à¤¨à¥¤`],
-        no: [`à¤¨à¥‹ à¤¬à¥‰à¤²à¥¤ à¤…à¤¬ à¤«à¥à¤°à¥€ à¤¹à¤¿à¤Ÿ à¤†à¤à¤—à¥€à¥¤`, `à¤“à¤µà¤°à¤¸à¥à¤Ÿà¥‡à¤ª à¤¹à¥à¤†, à¤¨à¥‹ à¤¬à¥‰à¤²à¥¤`, `${bowler} à¤¸à¥‡ à¤¨à¥‹ à¤¬à¥‰à¤²à¥¤`],
-        noRuns: [`à¤¨à¥‹ à¤¬à¥‰à¤² à¤”à¤° ${run} à¤°à¤¨à¥¤ à¤«à¥à¤°à¥€ à¤¹à¤¿à¤Ÿ à¤†à¤à¤—à¥€à¥¤`, `à¤¨à¥‹ à¤¬à¥‰à¤² à¤ªà¤° ${run} à¤°à¤¨ à¤­à¥€ à¤®à¤¿à¤² à¤—à¤à¥¤`, `${run} à¤°à¤¨ à¤¨à¥‹ à¤¬à¥‰à¤² à¤¸à¥‡ à¤œà¥à¤¡à¤¼à¥‡à¥¤`],
-        bye: [`${total} à¤¬à¤¾à¤ˆ à¤°à¤¨à¥¤`, `à¤•à¥€à¤ªà¤° à¤¸à¥‡ à¤šà¥‚à¤•, ${total} à¤¬à¤¾à¤ˆà¥¤`, `à¤¬à¤¾à¤ˆ à¤¸à¥‡ ${total} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`],
-        lb: [`${total} à¤²à¥‡à¤— à¤¬à¤¾à¤ˆ à¤°à¤¨à¥¤`, `à¤ªà¥ˆà¤¡ à¤¸à¥‡ à¤²à¤—à¥€ à¤—à¥‡à¤‚à¤¦, ${total} à¤²à¥‡à¤— à¤¬à¤¾à¤ˆà¥¤`, `à¤²à¥‡à¤— à¤¬à¤¾à¤ˆ à¤¸à¥‡ ${total} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`],
-        six: [`à¤›à¤•à¥à¤•à¤¾! à¤¶à¤¾à¤¨à¤¦à¤¾à¤° à¤¶à¥‰à¤Ÿà¥¤`, `à¤›à¤•à¥à¤•à¤¾! à¤—à¥‡à¤‚à¤¦ à¤¸à¥€à¤®à¤¾ à¤°à¥‡à¤–à¤¾ à¤•à¥‡ à¤ªà¤¾à¤°à¥¤`, `${batter} à¤•à¤¾ à¤¬à¤¡à¤¼à¤¾ à¤¶à¥‰à¤Ÿ, à¤›à¤¹ à¤°à¤¨à¥¤`],
-        four: [`à¤šà¥Œà¤•à¤¾! à¤—à¥ˆà¤ª à¤®à¤¿à¤²à¤¾ à¤”à¤° à¤—à¥‡à¤‚à¤¦ à¤¬à¤¾à¤‰à¤‚à¤¡à¥à¤°à¥€ à¤¤à¤•à¥¤`, `à¤šà¥Œà¤•à¤¾! à¤¬à¤¹à¥à¤¤ à¤…à¤šà¥à¤›à¥€ à¤Ÿà¤¾à¤‡à¤®à¤¿à¤‚à¤—à¥¤`, `${batter} à¤¨à¥‡ à¤¬à¥‡à¤¹à¤¤à¤°à¥€à¤¨ à¤šà¥Œà¤•à¤¾ à¤¨à¤¿à¤•à¤¾à¤²à¤¾à¥¤`],
-        dot: [`à¤¡à¥‰à¤Ÿ à¤—à¥‡à¤‚à¤¦à¥¤ à¤—à¥‡à¤‚à¤¦à¤¬à¤¾à¤œ à¤•à¤¾ à¤…à¤šà¥à¤›à¤¾ à¤¨à¤¿à¤¯à¤‚à¤¤à¥à¤°à¤£à¥¤`, `à¤•à¥‹à¤ˆ à¤°à¤¨ à¤¨à¤¹à¥€à¤‚à¥¤`, `à¤¬à¤²à¥à¤²à¥‡à¤¬à¤¾à¤œ à¤•à¥‹ à¤œà¤—à¤¹ à¤¨à¤¹à¥€à¤‚ à¤®à¤¿à¤²à¥€à¥¤`],
-        one: [`à¤à¤• à¤°à¤¨ à¤²à¤¿à¤¯à¤¾à¥¤`, `à¤¸à¤¿à¤‚à¤—à¤² à¤®à¤¿à¤² à¤—à¤¯à¤¾à¥¤`, `à¤¸à¥à¤Ÿà¥à¤°à¤¾à¤‡à¤• à¤¬à¤¦à¤²à¥€à¥¤`],
-        two: [`à¤¦à¥‹ à¤°à¤¨ à¤ªà¥‚à¤°à¥‡à¥¤`, `à¤—à¥ˆà¤ª à¤®à¥‡à¤‚ à¤–à¥‡à¤²à¤¾, à¤¦à¥‹ à¤°à¤¨à¥¤`, `à¤…à¤šà¥à¤›à¥€ à¤¦à¥Œà¤¡à¤¼ à¤¸à¥‡ à¤¦à¥‹ à¤°à¤¨ à¤®à¤¿à¤²à¥‡à¥¤`],
-        three: [`à¤¤à¥€à¤¨ à¤°à¤¨ à¤®à¤¿à¤² à¤—à¤à¥¤`, `à¤¬à¤¹à¥à¤¤ à¤…à¤šà¥à¤›à¥€ à¤¦à¥Œà¤¡à¤¼, à¤¤à¥€à¤¨ à¤°à¤¨à¥¤`, `à¤—à¥‡à¤‚à¤¦ à¤¡à¥€à¤ª à¤®à¥‡à¤‚ à¤—à¤ˆ, à¤¤à¥€à¤¨ à¤°à¤¨à¥¤`],
-        other: [`${run} à¤°à¤¨ à¤²à¤¿à¤à¥¤`, `${run} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡à¥¤`, `${run} à¤°à¤¨ à¤®à¤¿à¤²à¥‡à¥¤`],
-        score: `à¤¸à¥à¤•à¥‹à¤° ${score}à¥¤`
+        wicket: [`विकेट! ${type}${helper}. ${batter} आउट।`, `बड़ी सफलता! ${type}${helper}, ${batter} को लौटना होगा।`, `मैच का बड़ा पल, ${batter} ${type}${helper}।`],
+        wide: [`वाइड गेंद। एक अतिरिक्त रन।`, `लाइन बाहर रही, अंपायर ने वाइड दिया।`, `वाइड से एक रन जुड़ा।`],
+        wideRuns: [`वाइड, ${total} रन जुड़े।`, `${total} रन वाइड से मिले।`, `वाइड गेंद और ${total} रन।`],
+        no: [`नो बॉल। अब फ्री हिट आएगी।`, `ओवरस्टेप हुआ, नो बॉल।`, `${bowler} से नो बॉल।`],
+        noRuns: [`नो बॉल और ${run} रन। फ्री हिट आएगी।`, `नो बॉल पर ${run} रन भी मिल गए।`, `${run} रन नो बॉल से जुड़े।`],
+        bye: [`${total} बाई रन।`, `कीपर से चूक, ${total} बाई।`, `बाई से ${total} रन जुड़े।`],
+        lb: [`${total} लेग बाई रन।`, `पैड से लगी गेंद, ${total} लेग बाई।`, `लेग बाई से ${total} रन जुड़े।`],
+        six: [`छक्का! शानदार शॉट।`, `छक्का! गेंद सीमा रेखा के पार।`, `${batter} का बड़ा शॉट, छह रन।`],
+        four: [`चौका! गैप मिला और गेंद बाउंड्री तक।`, `चौका! बहुत अच्छी टाइमिंग।`, `${batter} ने बेहतरीन चौका निकाला।`],
+        dot: [`डॉट गेंद। गेंदबाज का अच्छा नियंत्रण।`, `कोई रन नहीं।`, `बल्लेबाज को जगह नहीं मिली।`],
+        one: [`एक रन लिया।`, `सिंगल मिल गया।`, `स्ट्राइक बदली।`],
+        two: [`दो रन पूरे।`, `गैप में खेला, दो रन।`, `अच्छी दौड़ से दो रन मिले।`],
+        three: [`तीन रन मिल गए।`, `बहुत अच्छी दौड़, तीन रन।`, `गेंद डीप में गई, तीन रन।`],
+        other: [`${run} रन लिए।`, `${run} रन जुड़े।`, `${run} रन मिले।`],
+        score: `स्कोर ${score}।`
       }
     };
     const pack = packs[mode] || packs.en;
@@ -1474,31 +1649,31 @@ window.app = {
     if (flags.isWicket) {
       const type = flags.wicketInfo?.type || "Wicket";
       const helper = flags.wicketInfo?.helper ? `, ${flags.wicketInfo.helper} involved` : "";
-      action = mode === "hi" ? `WICKET! ${type}${helper}. ${batter} à¤†à¤‰à¤Ÿ à¤¹à¥à¤.` : mode === "mix" ? `WICKET! ${type}${helper}. ${batter} ko jaana padega.` : `WICKET! ${type}${helper}. ${batter} has to go.`;
+      action = mode === "hi" ? `WICKET! ${type}${helper}. ${batter} आउट हुए.` : mode === "mix" ? `WICKET! ${type}${helper}. ${batter} ko jaana padega.` : `WICKET! ${type}${helper}. ${batter} has to go.`;
     } else if (flags.isWide) {
-      action = mode === "hi" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} à¤°à¤¨ à¤œà¥à¤¡à¤¼à¥‡.` : "Wide ball. à¤à¤• extra run.") : mode === "mix" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs add hue.` : "Wide ball. Extra run added.") : (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs added.` : "Wide ball. Extra run added.");
+      action = mode === "hi" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} रन जुड़े.` : "Wide ball. एक extra run.") : mode === "mix" ? (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs add hue.` : "Wide ball. Extra run added.") : (flags.totalRuns > 1 ? `Wide, ${flags.totalRuns} runs added.` : "Wide ball. Extra run added.");
     } else if (flags.isNo) {
-      action = mode === "hi" ? (run ? `No ball aur ${run} à¤°à¤¨. Free hit à¤†à¤à¤—à¥€.` : "No ball. Free hit à¤†à¤à¤—à¥€.") : mode === "mix" ? (run ? `No ball aur ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.") : (run ? `No ball and ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.");
+      action = mode === "hi" ? (run ? `No ball aur ${run} रन. Free hit आएगी.` : "No ball. Free hit आएगी.") : mode === "mix" ? (run ? `No ball aur ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.") : (run ? `No ball and ${run} run${run > 1 ? "s" : ""}. Free hit coming.` : "No ball. Free hit coming.");
     } else if (flags.isBye) {
-      action = mode === "hi" ? `${flags.totalRuns} bye à¤°à¤¨.` : `${flags.totalRuns} bye${flags.totalRuns > 1 ? "s" : ""}.`;
+      action = mode === "hi" ? `${flags.totalRuns} bye रन.` : `${flags.totalRuns} bye${flags.totalRuns > 1 ? "s" : ""}.`;
     } else if (flags.isLb) {
-      action = mode === "hi" ? `${flags.totalRuns} leg bye à¤°à¤¨.` : `${flags.totalRuns} leg bye${flags.totalRuns > 1 ? "s" : ""}.`;
+      action = mode === "hi" ? `${flags.totalRuns} leg bye रन.` : `${flags.totalRuns} leg bye${flags.totalRuns > 1 ? "s" : ""}.`;
     } else if (run === 6) {
-      action = mode === "hi" ? "SIX! à¤¶à¤¾à¤¨à¤¦à¤¾à¤° à¤¶à¥‰à¤Ÿ, à¤—à¥‡à¤‚à¤¦ à¤¸à¥€à¤®à¤¾ à¤°à¥‡à¤–à¤¾ à¤•à¥‡ à¤ªà¤¾à¤°." : mode === "mix" ? "SIX! Zabardast hit, seedha boundary ke bahar." : "SIX! Clean strike, all the way.";
+      action = mode === "hi" ? "SIX! शानदार शॉट, गेंद सीमा रेखा के पार." : mode === "mix" ? "SIX! Zabardast hit, seedha boundary ke bahar." : "SIX! Clean strike, all the way.";
     } else if (run === 4) {
-      action = mode === "hi" ? "FOUR! à¤—à¥ˆà¤ª à¤®à¤¿à¤²à¤¾ à¤”à¤° à¤—à¥‡à¤‚à¤¦ à¤¤à¥‡à¤œà¥€ à¤¸à¥‡ à¤¬à¤¾à¤‰à¤‚à¤¡à¥à¤°à¥€ à¤¤à¤•." : mode === "mix" ? "FOUR! Gap mila aur ball boundary tak gayi." : "FOUR! Finds the gap and races away.";
+      action = mode === "hi" ? "FOUR! गैप मिला और गेंद तेजी से बाउंड्री तक." : mode === "mix" ? "FOUR! Gap mila aur ball boundary tak gayi." : "FOUR! Finds the gap and races away.";
     } else if (run === 0) {
-      action = mode === "hi" ? "Dot ball. à¤—à¥‡à¤‚à¤¦à¤¬à¤¾à¤œ à¤•à¤¾ à¤…à¤šà¥à¤›à¤¾ à¤¨à¤¿à¤¯à¤‚à¤¤à¥à¤°à¤£." : mode === "mix" ? "Dot ball. Bowler ka achha control." : "Dot ball. Good control from the bowler.";
+      action = mode === "hi" ? "Dot ball. गेंदबाज का अच्छा नियंत्रण." : mode === "mix" ? "Dot ball. Bowler ka achha control." : "Dot ball. Good control from the bowler.";
     } else if (run === 1) {
-      action = mode === "hi" ? "à¤à¤• à¤°à¤¨ à¤²à¤¿à¤¯à¤¾." : mode === "mix" ? "Single nikal liya." : "Worked away for a single.";
+      action = mode === "hi" ? "एक रन लिया." : mode === "mix" ? "Single nikal liya." : "Worked away for a single.";
     } else if (run === 2) {
-      action = mode === "hi" ? "à¤—à¥ˆà¤ª à¤®à¥‡à¤‚ à¤–à¥‡à¤²à¤¾, à¤¦à¥‹ à¤°à¤¨ à¤ªà¥‚à¤°à¥‡." : mode === "mix" ? "Gap me push kiya, do run complete." : "Pushed into the gap, they come back for two.";
+      action = mode === "hi" ? "गैप में खेला, दो रन पूरे." : mode === "mix" ? "Gap me push kiya, do run complete." : "Pushed into the gap, they come back for two.";
     } else if (run === 3) {
-      action = mode === "hi" ? "à¤¬à¥‡à¤¹à¤¤à¤°à¥€à¤¨ running, à¤¤à¥€à¤¨ à¤°à¤¨." : mode === "mix" ? "Achhi running, teen run mil gaye." : "Excellent running, three taken.";
+      action = mode === "hi" ? "बेहतरीन running, तीन रन." : mode === "mix" ? "Achhi running, teen run mil gaye." : "Excellent running, three taken.";
     } else {
-      action = mode === "hi" ? `${run} à¤°à¤¨ à¤²à¤¿à¤.` : `${run} runs taken.`;
+      action = mode === "hi" ? `${run} रन लिए.` : `${run} runs taken.`;
     }
-    const scoreText = mode === "hi" ? `à¤¸à¥à¤•à¥‹à¤° ${score}.` : `Score ${score}.`;
+    const scoreText = mode === "hi" ? `स्कोर ${score}.` : `Score ${score}.`;
     return `${ballNo}: ${base}, ${action} ${scoreText}${chase ? " " + chase : ""}`;
   },
   chaseLine() {
